@@ -17,12 +17,15 @@ void *parse_input();
 
 
 typedef struct {
-		char remoteIP[20];
-		int remotePort;
-		char myVIP[20];
-		char remoteVIP[20];
-		int status;
+	char remoteIP[20];
+	int remotePort;
+	char myVIP[20];
+	char remoteVIP[20];
+	char status[20];
+	int interface_id;
 } interface;
+
+int interfaceCount;
 int myPort;
 interface interfaceArr[16];
 
@@ -33,13 +36,13 @@ int main(int argc, char ** argv)
 	FILE * fp;
 	char line[121];
 	char *item;
-	int count = -1;
+	interfaceCount = -1;
 	char myIP[20];
 	
 	fp = fopen(argv[1], "r");
 
 	while (fgets(line, 120, fp)) {
-		if(count == -1) {
+		if(interfaceCount == -1) {
 			char * temp;
 			item = strtok_r(line, ":", &temp);
 			strcpy(myIP, item);
@@ -47,25 +50,28 @@ int main(int argc, char ** argv)
 			item = strtok_r(NULL, ":", &temp);
 			myPort = atoi(item);
 
-			count++;
+			interfaceCount++;
 		}
 		else {
 			printf("%s\n", line);
 			char * temp;
 			item = strtok_r(line, ":", &temp);
-			strcpy(interfaceArr[count].remoteIP, item);
+			strcpy(interfaceArr[interfaceCount].remoteIP, item);
 
 			char * token = strtok_r(NULL, ":", &temp);
 			item = strtok_r(token, " ", &temp);
-			interfaceArr[count].remotePort = atoi(item);
+			interfaceArr[interfaceCount].remotePort = atoi(item);
 
 			item = strtok_r(NULL, " ", &temp);
-			strcpy(interfaceArr[count].myVIP, item);
+			strcpy(interfaceArr[interfaceCount].myVIP, item);
 
 			item = strtok_r(NULL, " ", &temp);
-			strcpy(interfaceArr[count].remoteVIP, item);
+			strcpy(interfaceArr[interfaceCount].remoteVIP, item);
 
-			count++;
+			interfaceArr[interfaceCount].interface_id = (interfaceCount + 1);
+			strcpy(interfaceArr[interfaceCount].status, "up");
+
+			interfaceCount++;
 		}
 	}
 
@@ -106,17 +112,22 @@ void *parse_input() {
 		char *firstWord = strtok_r(uInp, " ", &temp);
 
 		if(strcmp(firstWord, "ifconfig") == 0) {
-			printf("ifconfig\n");
+			int i;
+			for (i = 0; i < interfaceCount; i++) {
+				printf("%d %s %s\n", interfaceArr[i].interface_id, interfaceArr[i].myVIP, interfaceArr[i].status);
+			}
 		}
 		else if (strcmp(firstWord, "routes") == 0) {
 			printf("routes\n");
 		}
 		else if (strcmp(firstWord, "down") == 0) {
 			int interface_id = atoi(strtok_r(NULL, " ", &temp));
+			strcpy(interfaceArr[interface_id - 1].status, "down");
 			printf("Interface %d down\n", interface_id);
 		}
 		else if (strcmp(firstWord, "up") == 0) {
 			int interface_id = atoi(strtok_r(NULL, " ", &temp));
+			strcpy(interfaceArr[interface_id - 1].status, "up");
 			printf("Interface %d up\n", interface_id);
 		}
 		else if (strcmp(firstWord, "send") == 0) {

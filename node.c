@@ -8,10 +8,6 @@
 #include <pthread.h>
 #include <netinet/in.h>
 
-void* server();
-int client(const char * addr, uint16_t port, char *msg);
-void *parse_input();
-
 #define MAX_MSG_LENGTH (1400)
 #define BUF_LENGTH (64*1024) // 64 KiB
 
@@ -28,8 +24,6 @@ typedef struct {
 	uint32_t	ip_dst;				/* dest address */
 } ip;
 
-ip createIPHeader(char * sAddress, char * dAddress, int p, char * msg);
-
 typedef struct {
 	char remoteIP[20];
 	int remotePort;
@@ -44,6 +38,12 @@ typedef struct {
 	int nextHop;
 	int cost;
 } routeTableEntry;
+
+char * serialize(ip * ipToSerialize, char * buf);
+ip createIPHeader(char * sAddress, char * dAddress, int p, char * msg);
+void* server();
+int client(const char * addr, uint16_t port, char *msg);
+void *parse_input();
 
 int interfaceCount;
 int rtableCount;
@@ -187,17 +187,6 @@ void *parse_input() {
 
 			int i, rem_port;
 			char *physAddress;
-
-			// currently getting from interface array
-			// need to get things from routing table eventually
-
-			// for (i = 0; i < interfaceCount; i++) {
-			// 	if(strcmp(interfaceArr[i].remoteVIP, VIPaddress) == 0) {
-			// 		rem_port = interfaceArr[i].remotePort;
-			// 		physAddress = interfaceArr[i].remoteIP;
-			// 		break;
-			// 	}
-			// }
 			
 			for (i = 0; i < rtableCount; i++) {
 				if(strcmp(VIPaddress, routeTable[i].dAddress) == 0) {
@@ -208,10 +197,13 @@ void *parse_input() {
 				}
 			}
 
-			// ip testIP = createIPHeader(myIP, VIPaddress, 0, message);
+			ip testIP = createIPHeader(myIP, VIPaddress, 0, message);
 			// printf("%d %d %d", testIP.ip_src, testIP.ip_dst, testIP.ip_p);
 
-			printf("address: %s\nport: %d\n", physAddress, rem_port);
+			char buf1[BUF_LENGTH];
+			char * serialized;
+			serialized = serialize(&testIP, buf1);
+			printf("buf: %s\n", serialized);
 
 			// char hard_address[512];
 			// strcpy(hard_address, "127.0.0.1");
@@ -249,6 +241,21 @@ ip createIPHeader(char * sAddress, char * dAddress, int p, char * msg) {
 	printf("dAddress %s -> %d\n", dAddress, header.ip_dst);
 
 	return header;
+}
+
+char * serialize(ip * ipToSerialize, char * buf) {
+	int offset;
+	offset = 0;
+	char dString[16];
+
+	memcpy(buf+offset, &ipToSerialize->ip_p, offset+=sizeof(u_char));
+	memcpy(buf+offset, ":", offset+=sizeof(u_char));
+
+	return buf;
+}
+
+ip deserialize(char * buf) {
+
 }
 
 int client(const char * addr, uint16_t port, char msg[])
@@ -305,6 +312,12 @@ void *server()
 			perror("Receiving error:");
 			return (void*) 1;
 		}
+
+		// temporarily assume always going to forward protocol 0
+		// not worry about TTL and checksum
+		// check if it's at destination
+		// if at destination, print. If not, forward
+
 		printf("%s\n", msg);
 		msg[recvlen] = 0;
 	}

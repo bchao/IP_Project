@@ -6,8 +6,8 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <pthread.h>
+#include <netinet/in.h>
 
-//#include "link_layer.h"
 void* server();
 int client(const char * addr, uint16_t port, char *msg);
 void *parse_input();
@@ -15,6 +15,20 @@ void *parse_input();
 #define MAX_MSG_LENGTH (1400)
 #define BUF_LENGTH (64*1024) // 64 KiB
 
+typedef struct {
+	u_char		ip_p;				/* protocol */
+	u_char		ip_ttl;				/* time to live */
+	u_char		ip_hl:4;				/* header length */
+			// ip_v:4;				/* version */
+	short		ip_len;				/* total length */
+	u_short		ip_id;				/* identification */
+	short		ip_off;				/* fragment offset field */
+	u_short		ip_sum;				/* checksum */
+	uint32_t	ip_src;				/* source address */
+	uint32_t	ip_dst;				/* dest address */
+} ip;
+
+ip createIPHeader(char * sAddress, char * dAddress, int p, char * msg);
 
 typedef struct {
 	char remoteIP[20];
@@ -25,9 +39,18 @@ typedef struct {
 	int interface_id;
 } interface;
 
+typedef struct {
+	char dAddress[20];
+	int nextHop;
+	int cost;
+} routeTableEntry;
+
 int interfaceCount;
+int rtableCount;
 int myPort;
+char myIP[20];
 interface interfaceArr[16];
+routeTableEntry routeTable[16];
 
 int main(int argc, char ** argv)
 {
@@ -37,7 +60,6 @@ int main(int argc, char ** argv)
 	char line[121];
 	char *item;
 	interfaceCount = -1;
-	char myIP[20];
 	
 	fp = fopen(argv[1], "r");
 
@@ -51,7 +73,12 @@ int main(int argc, char ** argv)
 		if(interfaceCount == -1) {
 			char * temp;
 			item = strtok_r(line, ":", &temp);
-			strcpy(myIP, item);
+			if(strcmp(item, "localhost") == 0) {
+				strcpy(myIP, "127.0.0.1");
+			}
+			else {
+				strcpy(myIP, item);
+			}
 
 			item = strtok_r(NULL, ":", &temp);
 			myPort = atoi(item);
@@ -88,6 +115,16 @@ int main(int argc, char ** argv)
 	}
 
 	fclose(fp);
+
+	// hardcoded routing table
+	rtableCount = 2;
+	strcpy(routeTable[0].dAddress, "10.116.89.157");
+	routeTable[0].nextHop = 1;
+	routeTable[0].cost = 1;
+	strcpy(routeTable[1].dAddress, "14.230.5.36");
+	routeTable[1].nextHop = 2;
+	routeTable[1].cost = 1;
+
 
 	/* RUN AS UDP SERVER */
 	pthread_t server_thread;
@@ -135,20 +172,39 @@ void *parse_input() {
 			printf("Interface %d up\n", interface_id);
 		}
 		else if (strcmp(firstWord, "send") == 0) {
-			char *address = strtok_r(NULL, " ", &temp);
+			char *VIPaddress = strtok_r(NULL, " ", &temp);
 			char *message = strtok_r(NULL, " ", &temp);
 
-			printf("Should send %s to %s\n", message, address);
+			printf("Should send %s to %s\n", message, VIPaddress);
 
 			int i, rem_port;
 			char *physAddress;
-			for (i = 0; i < interfaceCount; i++) {
-				if(strcmp(interfaceArr[i].remoteVIP, address) == 0) {
-					rem_port = interfaceArr[i].remotePort;
-					physAddress = interfaceArr[i].remoteIP;
+
+			// currently getting from interface array
+			// need to get things from routing table eventually
+
+			// for (i = 0; i < interfaceCount; i++) {
+			// 	if(strcmp(interfaceArr[i].remoteVIP, VIPaddress) == 0) {
+			// 		rem_port = interfaceArr[i].remotePort;
+			// 		physAddress = interfaceArr[i].remoteIP;
+			// 		break;
+			// 	}
+			// }
+			
+			for (i = 0; i < rtableCount; i++) {
+				if(strcmp(VIPaddress, routeTable[i].dAddress) == 0) {
+					int nextHop = routeTable[i].nextHop - 1;
+					rem_port = interfaceArr[nextHop].remotePort;
+					physAddress = interfaceArr[nextHop].remoteIP;
 					break;
 				}
 			}
+
+			// ip testIP = createIPHeader(myIP, VIPaddress, 0, message);
+			// printf("%d %d %d", testIP.ip_src, testIP.ip_dst, testIP.ip_p);
+
+			printf("address: %s\nport: %d\n", physAddress, rem_port);
+
 			// char hard_address[512];
 			// strcpy(hard_address, "127.0.0.1");
 			// int hard_port = 17001;
@@ -159,6 +215,32 @@ void *parse_input() {
 		}
 	}
 	return 0;
+}
+
+// typedef struct {
+// 	u_char		ip_p;				/* protocol */
+// 	u_char		ip_ttl;				/* time to live */
+// 	u_char		ip_hl:4				/* header length */
+// 			// ip_v:4;				/* version */
+// 	short		ip_len;				/* total length */
+// 	u_short		ip_id;				/* identification */
+// 	short		ip_off;				/* fragment offset field */
+// 	u_short		ip_sum;				/* checksum */
+// 	uint32_t	ip_src				/* source address */
+// 	uint32_t	ip_dst;				/* dest address */
+// } ip;
+
+ip createIPHeader(char * sAddress, char * dAddress, int p, char * msg) {
+	ip header;
+	header.ip_p = p;
+	// header.ip_ttl = 16;
+	// header.ip_hl = sizeof(header);
+	header.ip_src = inet_addr(sAddress);
+	printf("sAddress %s -> %d\n", sAddress, header.ip_src);
+	header.ip_dst = inet_addr(dAddress);
+	printf("dAddress %s -> %d\n", dAddress, header.ip_dst);
+
+	return header;
 }
 
 int client(const char * addr, uint16_t port, char msg[])

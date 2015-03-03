@@ -95,22 +95,14 @@ int main(int argc, char ** argv)
 		fprintf(stderr, "Error creating thread\n");
 		return 1;
 	}
-	// server(myPort);
 
 	/* CREATE ANOTHER THREAD TO LOOP AND WAIT FOR USER INPUT */
 	
-	// pthread_t user_input_thread;
-	// if(pthread_create(&user_input_thread, NULL, parse_input, (void*) interfaceArr)) {
-	// 	fprintf(stderr, "Error creating thread\n");
-	// 	return 1;
-	// }
 	parse_input();
 
 	/* TRY TO MAKE CALLS TO LINK LAYER */
 
 	return 0;
-
-	//return getInput();
 }
 
 void *parse_input() {

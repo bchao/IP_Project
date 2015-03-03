@@ -122,10 +122,12 @@ void *parse_input() {
 		}
 		else if (strcmp(firstWord, "down") == 0) {
 			int interface_id = atoi(strtok_r(NULL, " ", &temp));
+			strcpy(interfaceArr[interface_id - 1].status, "down");
 			printf("Interface %d down\n", interface_id);
 		}
 		else if (strcmp(firstWord, "up") == 0) {
 			int interface_id = atoi(strtok_r(NULL, " ", &temp));
+			strcpy(interfaceArr[interface_id - 1].status, "up");
 			printf("Interface %d up\n", interface_id);
 		}
 		else if (strcmp(firstWord, "send") == 0) {

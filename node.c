@@ -10,7 +10,8 @@
 //#include "link_layer.h"
 int server(uint16_t port);
 int client(const char * addr, uint16_t port, char msg[]);
-void *parse_input(void* something);
+void *parse_input();
+
 
 #define MAX_MSG_LENGTH (512)
 #define MAX_BACK_LOG (5)
@@ -24,6 +25,7 @@ int main(int argc, char ** argv)
 		char myVIP[20];
 		char remoteVIP[20];
 		int status;
+		int interface_id;
 	} interface;
 
 	interface interfaceArr[16];

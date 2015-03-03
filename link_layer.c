@@ -1,3 +1,5 @@
+#include "link_layer.h"
+
 #include <stdio.h>
 #include <string.h>
 #include <sys/socket.h>
@@ -5,9 +7,6 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <stdlib.h>
-
-int server(uint16_t port);
-int client(const char * addr, uint16_t port);
 
 #define MAX_MSG_LENGTH (1400) // MUST SUBTRACT OFF SIZE OF HEADER
 #define BUF_LENGTH (64*1024) // 64 KiB

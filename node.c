@@ -5,9 +5,13 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <pthread.h>
+
+#include "link_layer.h"
 
 int main(int argc, char ** argv)
 {
+	/* READ IN INPUT FILE */
 	typedef struct {
 		char remoteIP[20];
 		int remotePort;
@@ -56,7 +60,21 @@ int main(int argc, char ** argv)
 	}
 
 	fclose(fp);
-	exit(EXIT_SUCCESS);
+
+	/* RUN AS UDP SERVER */
+	server(myPort);
+
+	/* CREATE ANOTHER THREAD TO LOOP AND WAIT FOR USER INPUT */
+	p_thread user_input_thread;
+
+	if(pthread_create(&user_input_thread, NULL, parse_input)) {
+		fprintf(stderr, "Error creating thread\n");
+		return 1;
+	}
+
+	/* TRY TO MAKE CALLS TO LINK LAYER */
+
+	return 0;
 
 	// if (argc < 3) {
 	// 	printf("Command should be: myprog s <port> or myprog c <port> <address>\n");
@@ -81,3 +99,4 @@ int main(int argc, char ** argv)
 	// }
 	// return 0;
 }
+

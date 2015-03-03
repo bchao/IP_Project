@@ -61,9 +61,7 @@ int main(int argc, char ** argv)
 
 	fclose(fp);
 
-	return 0;
-
-	// return getInput();
+	return getInput();
 }
 
 int getInput() {
@@ -74,10 +72,36 @@ int getInput() {
 		printf("Enter message: \n");
 		gets(msg);
 
+		char *temp;
+		char *firstWord = strtok_r(msg, " ", &temp);
 
+		if(strcmp(firstWord, "ifconfig") == 0) {
+			printf("ifconfig\n");
+		}
+		else if (strcmp(firstWord, "routes") == 0) {
+			printf("routes\n");
+		}
+		else if (strcmp(firstWord, "down") == 0) {
+			int interface_id = atoi(strtok_r(NULL, " ", &temp));
+			printf("Interface %d down\n", interface_id);
+		}
+		else if (strcmp(firstWord, "up") == 0) {
+			int interface_id = atoi(strtok_r(NULL, " ", &temp));
+			printf("Interface %d up\n", interface_id);
+		}
+		else if (strcmp(firstWord, "send") == 0) {
+			char *address = strtok_r(NULL, " ", &temp);
+			printf("%s\n", address);
+			char *message = strtok_r(NULL, " ", &temp);
+			printf("%s\n", message);
+			printf("send %s to %s\n", message, address);
+		}
+		else {
+			printf("not a correct input\n");
+		}
 
-		printf("You type: %s\n",msg);
 	}
 
 	return 0;
 }
+

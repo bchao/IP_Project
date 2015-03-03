@@ -39,7 +39,7 @@ typedef struct {
 	int cost;
 } routeTableEntry;
 
-char * serialize(ip * ipToSerialize, char * buf);
+void * serialize(ip * ipToSerialize, char * buf);
 ip createIPHeader(char * sAddress, char * dAddress, int p, char * msg);
 void* server();
 int client(const char * addr, uint16_t port, char *msg);
@@ -195,10 +195,10 @@ void *parse_input() {
 			ip testIP = createIPHeader(myIP, VIPaddress, 0, message);
 			// printf("%d %d %d", testIP.ip_src, testIP.ip_dst, testIP.ip_p);
 
-			char buf1[BUF_LENGTH];
-			char * serialized;
-			serialized = serialize(&testIP, buf1);
-			printf("buf: %s\n", serialized);
+			char * serialized = (char*) malloc(sizeof(ip));
+
+			serialize(&testIP, serialized);
+			// printf("buf: %s\n", serialized);
 
 			// char hard_address[512];
 			// strcpy(hard_address, "127.0.0.1");
@@ -213,19 +213,6 @@ void *parse_input() {
 	return 0;
 }
 
-// typedef struct {
-// 	u_char		ip_p;				/* protocol */
-// 	u_char		ip_ttl;				/* time to live */
-// 	u_char		ip_hl:4				/* header length */
-// 			// ip_v:4;				/* version */
-// 	short		ip_len;				/* total length */
-// 	u_short		ip_id;				/* identification */
-// 	short		ip_off;				/* fragment offset field */
-// 	u_short		ip_sum;				/* checksum */
-// 	uint32_t	ip_src				/* source address */
-// 	uint32_t	ip_dst;				/* dest address */
-// } ip;
-
 ip createIPHeader(char * sAddress, char * dAddress, int p, char * msg) {
 	ip header;
 	header.ip_p = p;
@@ -239,15 +226,31 @@ ip createIPHeader(char * sAddress, char * dAddress, int p, char * msg) {
 	return header;
 }
 
-char * serialize(ip * ipToSerialize, char * buf) {
+void * serialize(ip * ipToSerialize, char * buf) {
 	int offset;
 	offset = 0;
 	char dString[16];
 
-	memcpy(buf+offset, &ipToSerialize->ip_p, offset+=sizeof(u_char));
+	printf("ip_p: %d\n", ipToSerialize->ip_p);
+
+	// sprintf(dString, "%hd", *(int*)&ipToSerialize->ip_p);
+	// printf("%s\n", dString);
+	// memcpy(buf+offset, &(ipToSerialize->ip_p), offset+=sizeof(u_char));
+	// memcpy(buf+offset, dString, offset+=sizeof(int));
+
+
+	memcpy(buf+offset, &(ipToSerialize->ip_src), offset+=sizeof(uint32_t));
 	memcpy(buf+offset, ":", offset+=sizeof(u_char));
 
-	return buf;
+	// memcpy(buf+offset, &ipToSerialize->ip_p, offset+=sizeof(u_char));
+	// memcpy(buf+offset, ":", offset+=sizeof(u_char));
+
+	printf("buf: %s\n", buf);
+
+	// printf("BLAH: %d\n", *(&ipToSerialize->ip_src));
+	// printf("BLAH: %d\n", *(&ipToSerialize->ip_dst));
+
+	return NULL;
 }
 
 ip deserialize(char * buf) {

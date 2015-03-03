@@ -8,32 +8,33 @@
 #include <pthread.h>
 
 //#include "link_layer.h"
-int server(uint16_t port);
+void* server();
 int client(const char * addr, uint16_t port, char msg[]);
-void *parse_input(void* something);
+void *parse_input();
 
 #define MAX_MSG_LENGTH (512)
 #define MAX_BACK_LOG (5)
 
-int main(int argc, char ** argv)
-{
-	/* READ IN INPUT FILE */
-	typedef struct {
+typedef struct {
 		char remoteIP[20];
 		int remotePort;
 		char myVIP[20];
 		char remoteVIP[20];
 		int status;
-	} interface;
+} interface;
+int myPort;
+interface interfaceArr[16];
 
-	interface interfaceArr[16];
+int main(int argc, char ** argv)
+{
+	/* READ IN INPUT FILE */
+
 	FILE * fp;
 	char line[121];
 	char *item;
 	int count = -1;
 	char myIP[20];
-	int myPort;
-
+	
 	fp = fopen(argv[1], "r");
 
 	while (fgets(line, 120, fp)) {
@@ -71,7 +72,7 @@ int main(int argc, char ** argv)
 
 	/* RUN AS UDP SERVER */
 	pthread_t server_thread;
-	if(pthread_create(&server_thread, NULL, server, (void*) myPort)) {
+	if(pthread_create(&server_thread, NULL, server, NULL)) {
 		fprintf(stderr, "Error creating thread\n");
 		return 1;
 	}
@@ -168,7 +169,7 @@ int client(const char * addr, uint16_t port, char msg[])
 	return 0;
 }
 
-int server(uint16_t port)
+void *server()
 {
 	struct sockaddr_in server_addr, client_addr;
 	int sock;
@@ -178,27 +179,27 @@ int server(uint16_t port)
 	bzero((char *)&server_addr, sizeof(server_addr));
 	server_addr.sin_addr.s_addr = INADDR_ANY;
 	server_addr.sin_family = AF_INET;
-	server_addr.sin_port = htons(port);
+	server_addr.sin_port = htons(myPort);
 
 	// Create socket using UDP datagrams
 	if ((sock = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
 		perror("Create socket error:");
-		return 1;
+		return (void*) 1;
 	}
-	printf("Socket created on port %i.\n", port);
+	printf("Socket created on port %i.\n", myPort);
 	// Bind socket to local address
 	if ((bind(sock, (struct sockaddr*)&server_addr, sizeof(server_addr))) < 0) {
 		perror("Bind socket error:");
-		return 1;
+		return (void*) 1;
 	}
 
 	while(1) {
 		if (recvfrom(sock, msg, MAX_MSG_LENGTH, 0, (struct sockaddr *)&client_addr, &len) < 0) {
 			perror("Receiving error:");
-			return 1;
+			return (void*) 1;
 		}
 		printf("Received packet from %s:%d\nData: %s\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port), msg);
 	}
 	close(sock);
-	return 0;
+	return (void*) 0;
 }

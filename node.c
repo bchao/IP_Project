@@ -9,11 +9,12 @@
 
 //#include "link_layer.h"
 void* server();
-int client(const char * addr, uint16_t port, char msg[]);
+int client(const char * addr, uint16_t port, char *msg);
 void *parse_input();
 
-#define MAX_MSG_LENGTH (512)
-#define MAX_BACK_LOG (5)
+#define MAX_MSG_LENGTH (1400)
+#define BUF_LENGTH (64*1024) // 64 KiB
+
 
 typedef struct {
 		char remoteIP[20];
@@ -95,15 +96,14 @@ int main(int argc, char ** argv)
 }
 
 void *parse_input() {
-	char msg[512];
-	printf("Waiting for user input.\n");
+	char uInp[512];
 	while (1) {
 		fflush(stdin);
-		printf("Enter message: \n");
-		gets(msg);
+		printf("Enter command: \n");
+		gets(uInp);
 
 		char *temp;
-		char *firstWord = strtok_r(msg, " ", &temp);
+		char *firstWord = strtok_r(uInp, " ", &temp);
 
 		if(strcmp(firstWord, "ifconfig") == 0) {
 			printf("ifconfig\n");
@@ -121,50 +121,119 @@ void *parse_input() {
 		}
 		else if (strcmp(firstWord, "send") == 0) {
 			char *address = strtok_r(NULL, " ", &temp);
-			printf("%s\n", address);
 			char *message = strtok_r(NULL, " ", &temp);
+			printf("Should send %s to %s\n", message, address);
 
-			// hardcoded address and port for now
+			// hardcoded address and port for now, need to convert VIP address to IP and port
 			char hard_address[512];
 			strcpy(hard_address, "127.0.0.1");
-			int hard_port = 9999;
-			client(hard_address, hard_port, message);
-
-			printf("%s\n", message);
-			printf("send %s to %s\n", message, address);
+			int hard_port = 17001;
+			client("127.0.0.1", 17001, message);
 		}
 		else {
 			printf("not a correct input\n");
 		}
-
 	}
-
 	return 0;
 }
+
+
+// int client(const char * addr, uint16_t port, char *msg)
+// {
+// 	int sock;
+// 	struct sockaddr_in server_addr;
+// 	//char msg[MAX_MSG_LENGTH], reply[MAX_MSG_LENGTH*3];
+
+// 	if ((sock = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
+// 		perror("Create socket error:");
+// 		return 1;
+// 	}
+
+// 	printf("Socket created\n");
+// 	server_addr.sin_addr.s_addr = inet_addr(addr);
+// 	server_addr.sin_family = AF_INET;
+// 	server_addr.sin_port = htons(port);
+
+// 	printf("Connected to server %s:%d\n", addr, port);
+
+// 	int recv_len = 0;
+// 	if (sendto(sock, msg, strlen(msg), 0, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+// 		perror("Send error:");
+// 		return 1;
+// 	}
+// 	close(sock);
+// 	return 0;
+// }
+
+// void *server()
+// {
+
+// 	//uint16_t port = *(uint16_t*)(vport);
+// 	struct sockaddr_in sin; //server
+// 	struct sockaddr_in cin; // client
+
+// 	socklen_t addr_len = sizeof(cin);            /* length of addresses */
+//     int recvlen;                    /* # bytes received */
+
+
+// 	char buf[MAX_MSG_LENGTH];
+// 	int len;
+// 	int s, new_s;
+
+// 	bzero((char*)&sin, sizeof(sin));
+// 	sin.sin_family = AF_INET;
+// 	sin.sin_addr.s_addr = INADDR_ANY;
+// 	sin.sin_port = htons(myPort);
+
+// 	if((s = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
+// 		perror("simplex-talk: socket");
+// 		exit(1);
+// 	}
+
+// 	if((bind(s, (struct sockaddr*)&sin, sizeof(sin))) < 0) {
+// 		perror("simplex-talk: bind");
+// 		exit(1);
+// 	}
+
+// 	while(1) {
+	
+// 		len = recvfrom(s, buf, MAX_MSG_LENGTH, 0, (struct sockaddr *)&cin, &addr_len);
+
+// 		if(len>0){
+// 			buf[len] = 0;
+// 			printf("received message: \"%s\"\n", buf);
+// 		}
+
+// 	}	
+// 	close(s);
+// 	return 0;
+// }
+
+
+
 
 int client(const char * addr, uint16_t port, char msg[])
 {
 	int sock;
 	struct sockaddr_in server_addr;
-	socklen_t len = sizeof(server_addr);
 
 	if ((sock = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
 		perror("Create socket error:");
 		return 1;
 	}
 
-	printf("Socket created\n");
+	printf("Socket created on client\n");
 	server_addr.sin_addr.s_addr = inet_addr(addr);
 	server_addr.sin_family = AF_INET;
 	server_addr.sin_port = htons(port);
 
-	while (1) { //CHANGE WHILE LOOP TO TAKE IN INPUT FROM FILE
-		if (sendto(sock, msg, MAX_MSG_LENGTH, 0, (struct sockaddr *)&server_addr, len) < 0) {
-			perror("Sending error:");
-			return 1;
-		}
-
+	//int i;
+	//for(i = 0; i < 500; i++) { //CHANGE WHILE LOOP TO TAKE IN INPUT FROM FILE
+	if (sendto(sock, msg, strlen(msg), 0, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+		perror("Sending error:");
+		return 1;
 	}
+	//}
 	close(sock);
 	return 0;
 }
@@ -173,6 +242,7 @@ void *server()
 {
 	struct sockaddr_in server_addr, client_addr;
 	int sock;
+	int recvlen;
 	socklen_t len = sizeof(client_addr);
 	char msg[MAX_MSG_LENGTH];
 
@@ -186,7 +256,7 @@ void *server()
 		perror("Create socket error:");
 		return (void*) 1;
 	}
-	printf("Socket created on port %i.\n", myPort);
+	printf("Socket created on server port %i.\n", myPort);
 	// Bind socket to local address
 	if ((bind(sock, (struct sockaddr*)&server_addr, sizeof(server_addr))) < 0) {
 		perror("Bind socket error:");
@@ -194,11 +264,12 @@ void *server()
 	}
 
 	while(1) {
-		if (recvfrom(sock, msg, MAX_MSG_LENGTH, 0, (struct sockaddr *)&client_addr, &len) < 0) {
+		if (recvlen = recvfrom(sock, msg, MAX_MSG_LENGTH, 0, (struct sockaddr *)&client_addr, &len) < 0) {
 			perror("Receiving error:");
 			return (void*) 1;
 		}
-		printf("Received packet from %s:%d\nData: %s\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port), msg);
+		printf("%s\n", msg);
+		msg[recvlen] = 0;
 	}
 	close(sock);
 	return (void*) 0;

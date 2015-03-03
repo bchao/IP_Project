@@ -42,6 +42,12 @@ int main(int argc, char ** argv)
 	fp = fopen(argv[1], "r");
 
 	while (fgets(line, 120, fp)) {
+		int i;
+		for(i = 0; line[i]!='\0';i++) {
+			if(line[i]=='\n')
+				line[i]=' ';
+		}
+		
 		if(interfaceCount == -1) {
 			char * temp;
 			item = strtok_r(line, ":", &temp);
@@ -56,7 +62,13 @@ int main(int argc, char ** argv)
 			printf("%s\n", line);
 			char * temp;
 			item = strtok_r(line, ":", &temp);
-			strcpy(interfaceArr[interfaceCount].remoteIP, item);
+			if(strcmp(item, "localhost") == 0) {
+				strcpy(interfaceArr[interfaceCount].remoteIP, "127.0.0.1");
+			}
+			else {
+				strcpy(interfaceArr[interfaceCount].remoteIP, item);
+			}
+			// strcpy(interfaceArr[interfaceCount].remoteIP, item);
 
 			char * token = strtok_r(NULL, ":", &temp);
 			item = strtok_r(token, " ", &temp);
@@ -133,13 +145,22 @@ void *parse_input() {
 		else if (strcmp(firstWord, "send") == 0) {
 			char *address = strtok_r(NULL, " ", &temp);
 			char *message = strtok_r(NULL, " ", &temp);
+
 			printf("Should send %s to %s\n", message, address);
 
-			// hardcoded address and port for now, need to convert VIP address to IP and port
-			char hard_address[512];
-			strcpy(hard_address, "127.0.0.1");
-			int hard_port = 17001;
-			client("127.0.0.1", 17001, message);
+			int i, rem_port;
+			char *physAddress;
+			for (i = 0; i < interfaceCount; i++) {
+				if(strcmp(interfaceArr[i].remoteVIP, address) == 0) {
+					rem_port = interfaceArr[i].remotePort;
+					physAddress = interfaceArr[i].remoteIP;
+					break;
+				}
+			}
+			// char hard_address[512];
+			// strcpy(hard_address, "127.0.0.1");
+			// int hard_port = 17001;
+			client(physAddress, rem_port, message);
 		}
 		else {
 			printf("not a correct input\n");
@@ -147,81 +168,6 @@ void *parse_input() {
 	}
 	return 0;
 }
-
-
-// int client(const char * addr, uint16_t port, char *msg)
-// {
-// 	int sock;
-// 	struct sockaddr_in server_addr;
-// 	//char msg[MAX_MSG_LENGTH], reply[MAX_MSG_LENGTH*3];
-
-// 	if ((sock = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
-// 		perror("Create socket error:");
-// 		return 1;
-// 	}
-
-// 	printf("Socket created\n");
-// 	server_addr.sin_addr.s_addr = inet_addr(addr);
-// 	server_addr.sin_family = AF_INET;
-// 	server_addr.sin_port = htons(port);
-
-// 	printf("Connected to server %s:%d\n", addr, port);
-
-// 	int recv_len = 0;
-// 	if (sendto(sock, msg, strlen(msg), 0, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
-// 		perror("Send error:");
-// 		return 1;
-// 	}
-// 	close(sock);
-// 	return 0;
-// }
-
-// void *server()
-// {
-
-// 	//uint16_t port = *(uint16_t*)(vport);
-// 	struct sockaddr_in sin; //server
-// 	struct sockaddr_in cin; // client
-
-// 	socklen_t addr_len = sizeof(cin);            /* length of addresses */
-//     int recvlen;                    /* # bytes received */
-
-
-// 	char buf[MAX_MSG_LENGTH];
-// 	int len;
-// 	int s, new_s;
-
-// 	bzero((char*)&sin, sizeof(sin));
-// 	sin.sin_family = AF_INET;
-// 	sin.sin_addr.s_addr = INADDR_ANY;
-// 	sin.sin_port = htons(myPort);
-
-// 	if((s = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
-// 		perror("simplex-talk: socket");
-// 		exit(1);
-// 	}
-
-// 	if((bind(s, (struct sockaddr*)&sin, sizeof(sin))) < 0) {
-// 		perror("simplex-talk: bind");
-// 		exit(1);
-// 	}
-
-// 	while(1) {
-	
-// 		len = recvfrom(s, buf, MAX_MSG_LENGTH, 0, (struct sockaddr *)&cin, &addr_len);
-
-// 		if(len>0){
-// 			buf[len] = 0;
-// 			printf("received message: \"%s\"\n", buf);
-// 		}
-
-// 	}	
-// 	close(s);
-// 	return 0;
-// }
-
-
-
 
 int client(const char * addr, uint16_t port, char msg[])
 {

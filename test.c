@@ -8,60 +8,54 @@
 
 int main(int argc, char ** argv)
 {
-	struct interface {
-		char * remoteIP;
+	typedef struct {
+		char remoteIP[20];
 		int remotePort;
-		char * myVIP;
-		char * remoteVIP;
+		char myVIP[20];
+		char remoteVIP[20];
 		int status;
-	};
+	} interface;
 
+	interface interfaceArr[16];
 	FILE * fp;
-	char * line;
+	char line[121];
+	char *item;
+	int count = -1;
 	char * myIP;
 	int myPort;
-	size_t len = 0;
-
-	struct interface interfaceArr[16];
-
-	int count = -1;
 
 	fp = fopen(argv[1], "r");
-	if (fp == NULL)
-		exit(EXIT_FAILURE);
 
-	while (getline(&line, &len, fp) != -1) {
+	while (fgets(line, 120, fp)) {
 		if(count == -1) {
-			char* saveptr;
-			myIP = strtok_r(line, ":", &saveptr);
-			myPort = atoi(strtok_r(NULL, ":", &saveptr));
+			item = strtok(line, ":");
+			printf("%s ",item);
 
-			count ++;
-		}
-		else {
-			char *saveptr, *saveptr1;
-			char *token;
-
-			token = strtok_r(line, " ", &saveptr);
-
-			struct interface tempInt;
-			tempInt.myVIP 		= strtok_r(NULL, " ", &saveptr);
-			tempInt.remoteVIP 	= strtok_r(NULL, " ", &saveptr);
-			tempInt.remoteIP 	= strtok_r(line, ":", &saveptr1);
-			tempInt.remotePort	= atoi(strtop_r(NULL, ":", &saveptr1));
-
-			interfaceArr[count] = tempInt;
+			item = strtok(NULL, ":");
+			printf("%s ",item);
+			printf("\n");
 			count++;
 		}
+		else {
+			printf("%s\n", line);
+			char * temp;
+			item = strtok_r(line, ":", &temp);
+			strcpy(interfaceArr[count].remoteIP, item);
 
-		// printf("%s", line);
+			char * token = strtok_r(NULL, ":", &temp);
+			item = strtok_r(token, " ", &temp);
+			interfaceArr[count].remotePort = atoi(item);
+
+			item = strtok_r(NULL, " ", &temp);
+			strcpy(interfaceArr[count].myVIP, item);
+
+			item = strtok_r(NULL, " ", &temp);
+			strcpy(interfaceArr[count].remoteVIP, item);
+			count++;
+		}
 	}
 
-	printf("%s\n", myIP);
-
 	fclose(fp);
-	if (line)
-		free(line);
 	exit(EXIT_SUCCESS);
 
 	// if (argc < 3) {

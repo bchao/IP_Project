@@ -173,7 +173,10 @@ void *parse_input() {
 		}
 		else if (strcmp(firstWord, "send") == 0) {
 			char *VIPaddress = strtok_r(NULL, " ", &temp);
-			char *message = strtok_r(NULL, " ", &temp);
+		
+			char message[MAX_MSG_LENGTH];
+			strcpy(message, temp);
+			memset(temp, 0, strlen(temp));
 
 			printf("Should send %s to %s\n", message, VIPaddress);
 
@@ -209,6 +212,7 @@ void *parse_input() {
 			// strcpy(hard_address, "127.0.0.1");
 			// int hard_port = 17001;
 			client(physAddress, rem_port, message);
+			memset(message, 0, MAX_MSG_LENGTH);
 		}
 		else {
 			printf("not a correct input\n");
@@ -298,7 +302,7 @@ void *server()
 			return (void*) 1;
 		}
 		printf("%s\n", msg);
-		msg[recvlen] = 0;
+		memset(msg, 0, MAX_MSG_LENGTH);
 	}
 	close(sock);
 	return (void*) 0;

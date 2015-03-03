@@ -266,13 +266,11 @@ int client(const char * addr, uint16_t port, char msg[])
 	server_addr.sin_family = AF_INET;
 	server_addr.sin_port = htons(port);
 
-	//int i;
-	//for(i = 0; i < 500; i++) { //CHANGE WHILE LOOP TO TAKE IN INPUT FROM FILE
 	if (sendto(sock, msg, strlen(msg), 0, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
 		perror("Sending error:");
 		return 1;
 	}
-	//}
+
 	close(sock);
 	return 0;
 }

@@ -11,12 +11,11 @@
 #define MAX_MSG_LENGTH (1400) // MUST SUBTRACT OFF SIZE OF HEADER
 #define BUF_LENGTH (64*1024) // 64 KiB
 
-int client(const char * addr, uint16_t port)
+int client(const char * addr, uint16_t port, char msg[])
 {
 	int sock;
 	struct sockaddr_in client_addr;
 	int len = sizeof(client_addr);
-	char msg[MAX_MSG_LENGTH];
 
 	if ((sock = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
 		perror("Create socket error:");
@@ -29,7 +28,7 @@ int client(const char * addr, uint16_t port)
 	client_addr.sin_port = htons(port);
 
 	while (1) { //CHANGE WHILE LOOP TO TAKE IN INPUT FROM FILE
-		if (sendto(s, buf, BUF_LEN, 0, &client_addr, slen) < 0) {
+		if (sendto(sock, msg, MAX_MSG_LENGTH, 0, &client_addr, len) < 0) {
 			perror("Sending error:");
 			return 1;
 		}

@@ -132,22 +132,14 @@ int main(int argc, char ** argv)
 		fprintf(stderr, "Error creating thread\n");
 		return 1;
 	}
-	// server(myPort);
 
 	/* CREATE ANOTHER THREAD TO LOOP AND WAIT FOR USER INPUT */
 	
-	// pthread_t user_input_thread;
-	// if(pthread_create(&user_input_thread, NULL, parse_input, (void*) interfaceArr)) {
-	// 	fprintf(stderr, "Error creating thread\n");
-	// 	return 1;
-	// }
 	parse_input();
 
 	/* TRY TO MAKE CALLS TO LINK LAYER */
 
 	return 0;
-
-	//return getInput();
 }
 
 void *parse_input() {
@@ -181,7 +173,10 @@ void *parse_input() {
 		}
 		else if (strcmp(firstWord, "send") == 0) {
 			char *VIPaddress = strtok_r(NULL, " ", &temp);
-			char *message = strtok_r(NULL, " ", &temp);
+		
+			char message[MAX_MSG_LENGTH];
+			strcpy(message, temp);
+			memset(temp, 0, strlen(temp));
 
 			printf("Should send %s to %s\n", message, VIPaddress);
 
@@ -209,6 +204,7 @@ void *parse_input() {
 			// strcpy(hard_address, "127.0.0.1");
 			// int hard_port = 17001;
 			client(physAddress, rem_port, message);
+			memset(message, 0, MAX_MSG_LENGTH);
 		}
 		else {
 			printf("not a correct input\n");
@@ -319,7 +315,7 @@ void *server()
 		// if at destination, print. If not, forward
 
 		printf("%s\n", msg);
-		msg[recvlen] = 0;
+		memset(msg, 0, MAX_MSG_LENGTH);
 	}
 	close(sock);
 	return (void*) 0;

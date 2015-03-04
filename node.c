@@ -53,7 +53,7 @@ char *serialize(ip * ipStruct, char* buf);
 ip deserialize(char * buf);
 ip createIPPacket(char * sAddress, char * dAddress, int p, char * msg);
 ip createRIPPacket(char * sAddress, char * dAddress, int p, RIP * rip);
-void *updateRoutingTable(char * payload);
+void * updateRoutingTable(char * payload, uint32_t ip_dest);
 void *server();
 void *send_initial_requests();
 void *send_updates();
@@ -152,18 +152,18 @@ int main(int argc, char ** argv)
 	send_initial_requests();
 
 	// /* NEW THREAD TO LOOP AND SEND OUT UPDATE RIP PACKETS */
-	// pthread_t update_thread;
-	// if(pthread_create(&update_thread, NULL, send_updates, NULL)) {
-	// 	fprintf(stderr, "Error creating update thread\n");
-	// 	return 1;
-	// }
+	pthread_t update_thread;
+	if(pthread_create(&update_thread, NULL, send_updates, NULL)) {
+		fprintf(stderr, "Error creating update thread\n");
+		return 1;
+	}
 
 	// /* NEW THREAD TO LOOP AND EVICT */
-	// pthread_t evict_thread;
-	// if(pthread_create(&evict_thread, NULL, evict_entries, NULL)) {
-	// 	fprintf(stderr, "Error creating update thread\n");
-	// 	return 1;
-	// }
+	pthread_t evict_thread;
+	if(pthread_create(&evict_thread, NULL, evict_entries, NULL)) {
+		fprintf(stderr, "Error creating update thread\n");
+		return 1;
+	}
 
 	/* LOOP AND WAIT FOR USER INPUT */
 	
@@ -175,9 +175,10 @@ int main(int argc, char ** argv)
 /*  Send initial routing requests to all of the interfaces given in the input file
  */
 void *send_initial_requests() {
+	int i;
 	for (i = 0; i < interfaceCount; i++) {
 		// check if interface is down
-		if (interfaceArr[i])
+		//if (interfaceArr[i])
 		// BUILD RIP PACKET
 		RIP *message;
 		message->command = 1; // SHOULD THIS BE A REQUEST OR RESPONSE (1 or 2)?!?
@@ -213,7 +214,7 @@ void *send_updates() {
 	while(1) {
 		for (i = 0; i < interfaceCount; i++) {
 			// check if interface is down
-			if (interfaceArr[i])
+			//if (interfaceArr[i])
 			// BUILD RIP PACKET
 			RIP *message;
 			message->command = 2; // SHOULD THIS BE A REQUEST OR RESPONSE (1 or 2)?!?
@@ -534,7 +535,7 @@ void *server()
 
 		} else if(deserialized.ip_p == 200) {
 			printf("protocol 200\n");
-			updateRoutingTable(deserialized.payload);
+			updateRoutingTable(deserialized.payload, deserialized.ip_dst);
 		}
 
 		memset(msg, 0, MAX_MSG_LENGTH);
@@ -543,7 +544,7 @@ void *server()
 	return (void*) 0;
 }
 
-void * updateRoutingTable(char * payload) {
+void * updateRoutingTable(char * payload, uint32_t ip_dest) {
 	int offset = 0;
 	int n_entries, i;
 
@@ -570,15 +571,59 @@ void * updateRoutingTable(char * payload) {
 	//now rip is populated
 
 	if(rip.command == 1) {
+		// Add new entry to routing table
+		int i;
+		for(i = 0; i < interfaceCount; i++) {
+			if(inet_addr(interfaceArr[i].myVIP) == ip_dest) {
+				strcpy(routeTable[rTableCount].dAddress, interfaceArr[i].remoteVIP);
+				routeTable[rTableCount].nextHop = interfaceArr[i].interface_id;
+			}
+		}
+		routeTable[rTableCount].cost = 1;
+
+		// Increment routing table count
 		rTableCount++;
-		// add this entry to the routing table
+
 		// CREATE AND SEND UPDATE MESSAGE back
+		RIP *response;
+			response->command = 2; // SHOULD THIS BE A REQUEST OR RESPONSE (1 or 2)?!?
+			response->num_entries = rTableCount;
+
+			int j;
+			for(j = 0; j < rTableCount; j++) {
+				// SPECIAL POISON REVERSE CONDITION? SET THE COST TO infinity (16)
+				if(routeTable[j].nextHop == interfaceArr[i].interface_id) {
+					(response->entries)[j].cost = 16;
+				}
+				else {
+					(response->entries)[j].cost = routeTable[j].cost;
+				}	
+				(response->entries)[j].address = inet_addr(routeTable[j].dAddress);	
+			}
+
+			ip update_packet = createRIPPacket(myIP, interfaceArr[i].remoteVIP, 200, response);
+			char serialized[MAX_MSG_LENGTH];			
+			serialize(&update_packet, serialized);
+
+			client(interfaceArr[i].remoteIP, interfaceArr[i].remotePort, serialized);
 	}
 	else if(rip.command == 2) {
-		// iterate through all of the entries
-		// update our routing table as needed
-			// if current cost is greater than (newcost + 1), then update
-		// update the update_time for each entry
+		int i, j;
+		for(i = 0; i < rip.num_entries; i++) {
+			for(j = 0; j < rTableCount; j++) {
+				if(inet_addr(routeTable[j].dAddress) == rip.entries[i].address) {
+					// update our routing table as needed
+					// if current cost is greater than (newcost + 1), then update
+
+					if(routeTable[j].cost > rip.entries[i].cost + 1) {
+						routeTable[j].cost = rip.entries[i].cost + 1;
+					}
+
+					// update the update_time for each entry
+					routeTable[j].last_updated = time(0);
+				}
+			}
+		}
 	}
 
 	return NULL;

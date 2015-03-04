@@ -148,8 +148,11 @@ int main(int argc, char ** argv)
 		fprintf(stderr, "Error creating server thread\n");
 		return 1;
 	}
+	printf("A\n");
 
 	send_initial_requests();
+
+	printf("B\n");
 
 	// /* NEW THREAD TO LOOP AND SEND OUT UPDATE RIP PACKETS */
 	pthread_t update_thread;
@@ -158,12 +161,17 @@ int main(int argc, char ** argv)
 		return 1;
 	}
 
+	printf("C\n");
+
 	// /* NEW THREAD TO LOOP AND EVICT */
 	pthread_t evict_thread;
 	if(pthread_create(&evict_thread, NULL, evict_entries, NULL)) {
 		fprintf(stderr, "Error creating update thread\n");
 		return 1;
 	}
+
+	printf("D\n");
+
 
 	/* LOOP AND WAIT FOR USER INPUT */
 	
@@ -179,12 +187,13 @@ void *send_initial_requests() {
 	for (i = 0; i < interfaceCount; i++) {
 		// check if interface is down
 		//if (interfaceArr[i])
-		// BUILD RIP PACKET
-		RIP *message;
-		message->command = 1; // SHOULD THIS BE A REQUEST OR RESPONSE (1 or 2)?!?
-		message->num_entries = 0;
 
-		ip request_packet = createRIPPacket(myIP, interfaceArr[i].remoteVIP, 200, message);
+		// BUILD RIP PACKET
+		RIP message;
+		message.command = 1; // SHOULD THIS BE A REQUEST OR RESPONSE (1 or 2)?!?
+		message.num_entries = 0;
+
+		ip request_packet = createRIPPacket(myIP, interfaceArr[i].remoteVIP, 200, &message);
 		char serialized[MAX_MSG_LENGTH];			
 		serialize(&request_packet, serialized);
 
@@ -216,23 +225,23 @@ void *send_updates() {
 			// check if interface is down
 			//if (interfaceArr[i])
 			// BUILD RIP PACKET
-			RIP *message;
-			message->command = 2; // SHOULD THIS BE A REQUEST OR RESPONSE (1 or 2)?!?
-			message->num_entries = rTableCount;
+			RIP message;
+			message.command = 2; // SHOULD THIS BE A REQUEST OR RESPONSE (1 or 2)?!?
+			message.num_entries = rTableCount;
 
 			int j;
 			for(j = 0; j < rTableCount; j++) {
 				// SPECIAL POISON REVERSE CONDITION? SET THE COST TO infinity (16)
 				if(routeTable[j].nextHop == interfaceArr[i].interface_id) {
-					(message->entries)[j].cost = 16;
+					(message.entries)[j].cost = 16;
 				}
 				else {
-					(message->entries)[j].cost = routeTable[j].cost;
+					(message.entries)[j].cost = routeTable[j].cost;
 				}	
-				(message->entries)[j].address = inet_addr(routeTable[j].dAddress);	
+				(message.entries)[j].address = inet_addr(routeTable[j].dAddress);	
 			}
 
-			ip update_packet = createRIPPacket(myIP, interfaceArr[i].remoteVIP, 200, message);
+			ip update_packet = createRIPPacket(myIP, interfaceArr[i].remoteVIP, 200, &message);
 			char serialized[MAX_MSG_LENGTH];			
 			serialize(&update_packet, serialized);
 
@@ -507,7 +516,7 @@ void *server()
 			perror("Receiving error:");
 			return (void*) 1;
 		}
-		//printf("serialized thing on recv serv %i\n", (int) strlen(msg));
+		// printf("serialized thing on recv serv %i\n", (int) strlen(msg));
 		// temporarily assume always going to forward protocol 0
 		// not worry about TTL and checksum
 		// check if it's at destination
@@ -521,7 +530,7 @@ void *server()
 		printf("dest %d\n", deserialized.ip_dst);
 
 		if(deserialized.ip_ttl == 0) {
-			printf("Message droped.\n");
+			printf("Message dropped.\n");
 			return;
 		} else {
 			deserialized.ip_ttl--;
@@ -585,23 +594,23 @@ void * updateRoutingTable(char * payload, uint32_t ip_dest) {
 		rTableCount++;
 
 		// CREATE AND SEND UPDATE MESSAGE back
-		RIP *response;
-			response->command = 2; // SHOULD THIS BE A REQUEST OR RESPONSE (1 or 2)?!?
-			response->num_entries = rTableCount;
+		RIP response;
+			response.command = 2; // SHOULD THIS BE A REQUEST OR RESPONSE (1 or 2)?!?
+			response.num_entries = rTableCount;
 
 			int j;
 			for(j = 0; j < rTableCount; j++) {
 				// SPECIAL POISON REVERSE CONDITION? SET THE COST TO infinity (16)
 				if(routeTable[j].nextHop == interfaceArr[i].interface_id) {
-					(response->entries)[j].cost = 16;
+					(response.entries)[j].cost = 16;
 				}
 				else {
-					(response->entries)[j].cost = routeTable[j].cost;
+					(response.entries)[j].cost = routeTable[j].cost;
 				}	
-				(response->entries)[j].address = inet_addr(routeTable[j].dAddress);	
+				(response.entries)[j].address = inet_addr(routeTable[j].dAddress);	
 			}
 
-			ip update_packet = createRIPPacket(myIP, interfaceArr[i].remoteVIP, 200, response);
+			ip update_packet = createRIPPacket(myIP, interfaceArr[i].remoteVIP, 200, &response);
 			char serialized[MAX_MSG_LENGTH];			
 			serialize(&update_packet, serialized);
 

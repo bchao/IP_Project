@@ -259,7 +259,11 @@ void *parse_input() {
 			}
 		}
 		else if (strcmp(firstWord, "routes") == 0) {
-			printf("routes\n");
+			// int i;
+			// for (i = 0; i < rTableCount; i++) {
+			// 	printf("%s %d %d\n", routeTable[i].dAddress, routeTable[i].nextHop, routeTable[i].cost);
+			// }
+			// printf("routes\n");
 		}
 		else if (strcmp(firstWord, "down") == 0) {
 			int interface_id = atoi(strtok_r(NULL, " ", &temp));
@@ -284,7 +288,7 @@ void *parse_input() {
 			int i;
 			for(i = 0; i < rTableCount; i++) {
 				if(routeTable[i].nextHop == interface_id) {
-					routeTable[i].cost = 1;
+					routeTable[i].cost = 1;	
 					break;
 				}
 			}

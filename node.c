@@ -131,15 +131,15 @@ int main(int argc, char ** argv)
 
 	fclose(fp);
 
-	// hardcoded routing table
-	rTableCount = 2;
-	strcpy(routeTable[0].dAddress, "10.116.89.157");
-	routeTable[0].nextHop = 1;
-	routeTable[0].cost = 1;
-	strcpy(routeTable[1].dAddress, "14.230.5.36");
-	routeTable[1].nextHop = 2;
-	routeTable[1].cost = 1;
+	int i;
+	// initialize routing table
+	for(i = 0; i < interfaceCount; i++) {
+		strcpy(routeTable[i].dAddress, interfaceArr[i].remoteVIP);
+		routeTable[i].nextHop = interfaceArr[i].interface_id;
+		routeTable[i].cost = 1;
 
+		rTableCount++;
+	}
 
 	/* NEW THREAD TO RUN AS UDP SERVER */
 	pthread_t server_thread;
@@ -165,8 +165,6 @@ int main(int argc, char ** argv)
 	/* LOOP AND WAIT FOR USER INPUT */
 	
 	parse_input();
-
-	
 
 	return 0;
 }
@@ -241,11 +239,31 @@ void *parse_input() {
 		else if (strcmp(firstWord, "down") == 0) {
 			int interface_id = atoi(strtok_r(NULL, " ", &temp));
 			strcpy(interfaceArr[interface_id - 1].status, "down");
-			printf("Interface %d down\n", interface_id);
+
+			//find route in routeTable and update distance to inf
+			int i;
+			for(i = 0; i < rTableCount; i++) {
+				if(routeTable[i].nextHop == interface_id) {
+					routeTable[i].cost = 16;
+					break;
+				}
+			}
+
+			printf("Interface %d down with cost\n", interface_id);
 		}
 		else if (strcmp(firstWord, "up") == 0) {
 			int interface_id = atoi(strtok_r(NULL, " ", &temp));
 			strcpy(interfaceArr[interface_id - 1].status, "up");
+
+			//find route in routeTable and update distance to 1
+			int i;
+			for(i = 0; i < rTableCount; i++) {
+				if(routeTable[i].nextHop == interface_id) {
+					routeTable[i].cost = 1;
+					break;
+				}
+			}
+
 			printf("Interface %d up\n", interface_id);
 		}
 		else if (strcmp(firstWord, "send") == 0) {

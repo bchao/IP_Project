@@ -14,6 +14,12 @@
 #define HEADER_SIZE (18) // total size of our IP header
 #define EVICTION_TIME (12) // 12 seconds to evict
 
+typedef uint32_t in_addr_t;
+
+typedef struct {
+    in_addr_t s_addr;
+} in_addr;
+
 typedef struct {
 	u_char		ip_p;				/* protocol */
 	u_char		ip_ttl;				/* time to live */
@@ -54,7 +60,7 @@ char *serialize(ip * ipStruct, char* buf);
 ip deserialize(char * buf);
 ip createIPPacket(char * sAddress, char * dAddress, int p, char * msg);
 ip createRIPPacket(char * sAddress, char * dAddress, int p, RIP * rip);
-void * updateRoutingTable(char * payload, uint32_t ip_dest);
+void * updateRoutingTable(char * payload, uint32_t ip_dest, uint32_t ip_source);
 void *server();
 void *send_initial_requests();
 void *send_updates();
@@ -140,7 +146,7 @@ int main(int argc, char ** argv)
 		strcpy(routeTable[i].dAddress, interfaceArr[i].remoteVIP);
 		routeTable[i].nextHop = interfaceArr[i].interface_id;
 		routeTable[i].cost = 1;
-
+		routeTable[i].last_updated = time(0);
 		rTableCount++;
 	}
 
@@ -208,6 +214,7 @@ void *evict_entries() {
 	while(1) {
 		for(i = 0; i < rTableCount; i++) {
 			if(time(0) - routeTable[i].last_updated > EVICTION_TIME) {
+				// printf("%lld - %lld vs %d\n", (long long) time(0), (long long) routeTable[i].last_updated, EVICTION_TIME);
 				routeTable[i].cost = 16;
 			}
 		}
@@ -235,7 +242,8 @@ void *send_updates() {
 			for(j = 0; j < rTableCount; j++) {
 				// SPECIAL POISON REVERSE CONDITION? SET THE COST TO infinity (16)
 				if(routeTable[j].nextHop == interfaceArr[i].interface_id) {
-					(message.entries)[j].cost = 16;
+					// printf("poison update %d\n", message.entries[j].address);
+					message.entries[j].cost = 16;
 				}
 				else {
 					(message.entries)[j].cost = routeTable[j].cost;
@@ -270,6 +278,11 @@ void *parse_input() {
 			}
 		}
 		else if (strcmp(firstWord, "routes") == 0) {
+			int i;
+			for (i = 0; i < rTableCount; i++) {
+				printf("%s %d %d\n", routeTable[i].dAddress, routeTable[i].nextHop, routeTable[i].cost);
+				printf("%d\n", inet_addr(routeTable[i].dAddress));
+			}
 			printf("routes\n");
 		}
 		else if (strcmp(firstWord, "down") == 0) {
@@ -295,7 +308,7 @@ void *parse_input() {
 			int i;
 			for(i = 0; i < rTableCount; i++) {
 				if(routeTable[i].nextHop == interface_id) {
-					routeTable[i].cost = 1;
+					routeTable[i].cost = 1;	
 					break;
 				}
 			}
@@ -376,8 +389,6 @@ char * serialize(ip * ipStruct, char* buf) {
 	offset+=sizeof(uint32_t);
 	memcpy(buf + offset, &ipStruct->ip_dst, sizeof(uint32_t));
 	offset+=sizeof(uint32_t);
-
-	printf("protocol = %d\n", ipStruct->ip_p);
 
 	memcpy(buf + offset, &ipStruct->payload, (1400 - HEADER_SIZE));
 	offset+=(1400-HEADER_SIZE);
@@ -479,7 +490,7 @@ int client(const char * addr, uint16_t port, char msg[])
 	}
 
 	//printf("serialized thing in socket %i\n", (int) strlen(msg));
-	printf("Socket created on client\n");
+	// printf("Socket created on client\n");
 	server_addr.sin_addr.s_addr = inet_addr(addr);
 	server_addr.sin_family = AF_INET;
 	server_addr.sin_port = htons(port);
@@ -531,10 +542,10 @@ void *server()
 
 		ip deserialized = deserialize(msg);
 
-		printf("protocol %d\n", deserialized.ip_p);
-		printf("ttl %d\n", deserialized.ip_ttl);
-		printf("source %d\n", deserialized.ip_src);
-		printf("dest %d\n", deserialized.ip_dst);
+		// printf("protocol %d\n", deserialized.ip_p);
+		// printf("ttl %d\n", deserialized.ip_ttl);
+		// printf("source %d\n", deserialized.ip_src);
+		// printf("dest %d\n", deserialized.ip_dst);
 
 
 		int checksum = deserialized.ip_sum;
@@ -588,7 +599,7 @@ void *server()
 		
 		} else if(deserialized.ip_p == 200) {
 			printf("protocol 200\n");
-			updateRoutingTable(deserialized.payload, deserialized.ip_dst);
+			updateRoutingTable(deserialized.payload, deserialized.ip_dst, deserialized.ip_src);
 		}
 
 		memset(msg, 0, MAX_MSG_LENGTH);
@@ -597,7 +608,7 @@ void *server()
 	return (void*) 0;
 }
 
-void * updateRoutingTable(char * payload, uint32_t ip_dest) {
+void * updateRoutingTable(char * payload, uint32_t ip_dest, uint32_t ip_source) {
 	int offset = 0;
 	int n_entries, i;
 
@@ -614,22 +625,21 @@ void * updateRoutingTable(char * payload, uint32_t ip_dest) {
 		offset+=sizeof(uint32_t);
 		memcpy(&rip.entries[i].address, payload + offset, sizeof(uint32_t));
 		offset+=sizeof(uint32_t);
-	}
 
-	printf("command: %d\n", rip.command);
-	printf("num_entries: %d\n", rip.num_entries);
-	printf("entry 1 cost: %d\n", rip.entries[0].cost);
-	printf("entry 2 cost: %d\n", rip.entries[1].cost);
+		// printf("address cost %d %d\n", rip.entries[i].address, rip.entries[i].cost);
+	}
 
 	//now rip is populated
 
-	if(rip.command == 1) {
+	if(rip.command == 10000) {
 		// Add new entry to routing table
 		int i;
 		for(i = 0; i < interfaceCount; i++) {
 			if(inet_addr(interfaceArr[i].myVIP) == ip_dest) {
+				printf("new entry\n");
 				strcpy(routeTable[rTableCount].dAddress, interfaceArr[i].remoteVIP);
 				routeTable[rTableCount].nextHop = interfaceArr[i].interface_id;
+				routeTable[rTableCount].last_updated = time(0);
 			}
 		}
 		routeTable[rTableCount].cost = 1;
@@ -646,6 +656,7 @@ void * updateRoutingTable(char * payload, uint32_t ip_dest) {
 			for(j = 0; j < rTableCount; j++) {
 				// SPECIAL POISON REVERSE CONDITION? SET THE COST TO infinity (16)
 				if(routeTable[j].nextHop == interfaceArr[i].interface_id) {
+					// printf("poison\n");
 					(response.entries)[j].cost = 16;
 				}
 				else {
@@ -662,19 +673,52 @@ void * updateRoutingTable(char * payload, uint32_t ip_dest) {
 	}
 	else if(rip.command == 2) {
 		int i, j;
-		for(i = 0; i < rip.num_entries; i++) {
-			for(j = 0; j < rTableCount; j++) {
-				if(inet_addr(routeTable[j].dAddress) == rip.entries[i].address) {
-					// update our routing table as needed
-					// if current cost is greater than (newcost + 1), then update
 
-					if(routeTable[j].cost > rip.entries[i].cost + 1) {
-						routeTable[j].cost = rip.entries[i].cost + 1;
+		for(i = 0; i < rip.num_entries; i++) {
+			int foundMatch = 0;
+
+			char tempAddress[20];
+			struct in_addr in_add;
+			in_add.s_addr = rip.entries[i].address;
+			memcpy(tempAddress, inet_ntoa(in_add), 20);
+			printf("address %s\n", tempAddress);
+
+			for(j = 0; j < rTableCount; j++) {
+				printf("___+%s+%s cost %d\n", interfaceArr[j].myVIP, tempAddress, rip.entries[i].cost);
+
+				if(strcmp(routeTable[j].dAddress, tempAddress) == 0) {
+					foundMatch = 1; printf("found a match\n");
+
+					if(routeTable[j].cost > (rip.entries[i].cost + 1)) {
+						routeTable[j].cost = (rip.entries[i].cost + 1);
 					}
 
-					// update the update_time for each entry
 					routeTable[j].last_updated = time(0);
 				}
+			}
+
+			if(foundMatch == 0) {
+				printf("found new one\n");
+
+				struct in_addr i_add;
+				i_add.s_addr = rip.entries[i].address;
+
+				memcpy(routeTable[rTableCount].dAddress, tempAddress, 20);
+				routeTable[rTableCount].cost = rip.entries[i].cost + 1;
+
+				int k;
+				char nextHopAddress[20];
+				memcpy(nextHopAddress, inet_ntoa(i_add), 20);
+
+				for (k = 0; k < interfaceCount; k++) {
+					if(strcmp(nextHopAddress, interfaceArr[k].myVIP) == 0) {
+						printf("qwer qwer %d\n", interfaceArr[k].interface_id);
+						routeTable[rTableCount].nextHop = interfaceArr[k].interface_id;
+						printf("NEXT HOP %d\n", routeTable[rTableCount].nextHop);
+					}
+				}
+
+				rTableCount++;
 			}
 		}
 	}

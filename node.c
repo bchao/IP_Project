@@ -55,6 +55,7 @@ ip createIPPacket(char * sAddress, char * dAddress, int p, char * msg);
 ip createRIPPacket(char * sAddress, char * dAddress, int p, RIP * rip);
 void *updateRoutingTable(char * payload);
 void *server();
+void *send_initial_requests();
 void *send_updates();
 void *evict_entries();
 int client(const char * addr, uint16_t port, char *msg);
@@ -65,7 +66,7 @@ int rTableCount;
 int myPort;
 char myIP[20];
 interface interfaceArr[16];
-routeTableEntry routeTable[16];
+routeTableEntry routeTable[64];
 
 int main(int argc, char ** argv)
 {
@@ -148,6 +149,8 @@ int main(int argc, char ** argv)
 		return 1;
 	}
 
+	send_initial_requests();
+
 	// /* NEW THREAD TO LOOP AND SEND OUT UPDATE RIP PACKETS */
 	// pthread_t update_thread;
 	// if(pthread_create(&update_thread, NULL, send_updates, NULL)) {
@@ -166,10 +169,28 @@ int main(int argc, char ** argv)
 	
 	parse_input();
 
-	
-
 	return 0;
 }
+
+/*  Send initial routing requests to all of the interfaces given in the input file
+ */
+void *send_initial_requests() {
+	for (i = 0; i < interfaceCount; i++) {
+		// check if interface is down
+		if (interfaceArr[i])
+		// BUILD RIP PACKET
+		RIP *message;
+		message->command = 1; // SHOULD THIS BE A REQUEST OR RESPONSE (1 or 2)?!?
+		message->num_entries = 0;
+
+		ip request_packet = createRIPPacket(myIP, interfaceArr[i].remoteVIP, 200, message);
+		char serialized[MAX_MSG_LENGTH];			
+		serialize(&request_packet, serialized);
+
+		client(interfaceArr[i].remoteIP, interfaceArr[i].remotePort, serialized);				
+	}
+}
+
 /* Loops infinitely over the routing entries
    If any of the entries haven't been updated in the last 12 seconds, set its cost to infinity (16)
 */
@@ -177,9 +198,8 @@ void *evict_entries() {
 	int i;
 	while(1) {
 		for(i = 0; i < rTableCount; i++) {
-			routeTableEntry entry = routeTable[i];
-			if(time(0) - entry.last_updated > EVICTION_TIME) {
-				entry.cost = 16;
+			if(time(0) - routeTable[i].last_updated > EVICTION_TIME) {
+				routeTable[i].cost = 16;
 			}
 		}
 	}
@@ -192,9 +212,11 @@ void *send_updates() {
 	int i;
 	while(1) {
 		for (i = 0; i < interfaceCount; i++) {
+			// check if interface is down
+			if (interfaceArr[i])
 			// BUILD RIP PACKET
 			RIP *message;
-			message->command = 1; // SHOULD THIS BE A REQUEST OR RESPONSE (1 or 2)?!?
+			message->command = 2; // SHOULD THIS BE A REQUEST OR RESPONSE (1 or 2)?!?
 			message->num_entries = rTableCount;
 
 			int j;
@@ -477,6 +499,13 @@ void *server()
 		printf("source %d\n", deserialized.ip_src);
 		printf("dest %d\n", deserialized.ip_dst);
 
+		if(deserialized.ip_ttl == 0) {
+			printf("Message droped.\n");
+			return;
+		} else {
+			deserialized.ip_ttl--;
+		}
+
 		if(deserialized.ip_p == 0) {
 			//check if it's at destination
 			//check ttl and checksum
@@ -519,6 +548,18 @@ void * updateRoutingTable(char * payload) {
 	printf("entry 2 cost: %d\n", rip.entries[1].cost);
 
 	//now rip is populated
+
+	if(rip.command == 1) {
+		rTableCount++;
+		// add this entry to the routing table
+		// CREATE AND SEND UPDATE MESSAGE back
+	}
+	else if(rip.command == 2) {
+		// iterate through all of the entries
+		// update our routing table as needed
+			// if current cost is greater than (newcost + 1), then update
+		// update the update_time for each entry
+	}
 
 	return NULL;
 }

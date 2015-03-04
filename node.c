@@ -551,8 +551,6 @@ void *server()
 			deserialized.ip_ttl--;
 		}
 
-		
-
 		if(deserialized.ip_p == 0) {
 			//check if it's at destination
 			int i;

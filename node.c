@@ -281,7 +281,6 @@ void *parse_input() {
 			int i;
 			for (i = 0; i < rTableCount; i++) {
 				printf("%s %d %d\n", routeTable[i].dAddress, routeTable[i].nextHop, routeTable[i].cost);
-				printf("%d\n", inet_addr(routeTable[i].dAddress));
 			}
 			printf("routes\n");
 		}
@@ -550,10 +549,10 @@ void *server()
 
 		int checksum = deserialized.ip_sum;
 		deserialized.ip_sum = 0;
-		if (ip_sum((char*) &deserialized, MAX_MSG_LENGTH) != checksum) {
-			printf("Checksums different, message dropped. \n");
-			return;
-		}
+		// if (ip_sum((char*) &deserialized, MAX_MSG_LENGTH) != checksum) {
+		// 	printf("Checksums different, message dropped. \n");
+		// 	return;
+		// }
 
 		if(deserialized.ip_ttl == 0) {
 			printf("Message dropped.\n");
@@ -598,7 +597,7 @@ void *server()
 
 		
 		} else if(deserialized.ip_p == 200) {
-			printf("protocol 200\n");
+			// printf("protocol 200\n");
 			updateRoutingTable(deserialized.payload, deserialized.ip_dst, deserialized.ip_src);
 		}
 
@@ -681,13 +680,14 @@ void * updateRoutingTable(char * payload, uint32_t ip_dest, uint32_t ip_source) 
 			struct in_addr in_add;
 			in_add.s_addr = rip.entries[i].address;
 			memcpy(tempAddress, inet_ntoa(in_add), 20);
-			printf("address %s\n", tempAddress);
+			// printf("address %s\n", tempAddress);
 
 			for(j = 0; j < rTableCount; j++) {
-				printf("___+%s+%s cost %d\n", interfaceArr[j].myVIP, tempAddress, rip.entries[i].cost);
+				// printf("___+%s+%s cost %d\n", interfaceArr[j].myVIP, tempAddress, rip.entries[i].cost);
 
 				if(strcmp(routeTable[j].dAddress, tempAddress) == 0) {
-					foundMatch = 1; printf("found a match\n");
+					foundMatch = 1; 
+					// printf("found a match\n");
 
 					if(routeTable[j].cost > (rip.entries[i].cost + 1)) {
 						routeTable[j].cost = (rip.entries[i].cost + 1);
@@ -698,7 +698,7 @@ void * updateRoutingTable(char * payload, uint32_t ip_dest, uint32_t ip_source) 
 			}
 
 			if(foundMatch == 0) {
-				printf("found new one\n");
+				// printf("found new one\n");
 
 				struct in_addr i_add;
 				i_add.s_addr = rip.entries[i].address;
@@ -706,17 +706,17 @@ void * updateRoutingTable(char * payload, uint32_t ip_dest, uint32_t ip_source) 
 				memcpy(routeTable[rTableCount].dAddress, tempAddress, 20);
 				routeTable[rTableCount].cost = rip.entries[i].cost + 1;
 
-				int k;
+				int k, newNextHop;
 				char nextHopAddress[20];
 				memcpy(nextHopAddress, inet_ntoa(i_add), 20);
 
-				for (k = 0; k < interfaceCount; k++) {
+				for(k = 0; k < interfaceCount; k++) {
 					if(strcmp(nextHopAddress, interfaceArr[k].myVIP) == 0) {
-						printf("qwer qwer %d\n", interfaceArr[k].interface_id);
-						routeTable[rTableCount].nextHop = interfaceArr[k].interface_id;
-						printf("NEXT HOP %d\n", routeTable[rTableCount].nextHop);
+						newNextHop = interfaceArr[k].interface_id;
+						printf("hello\n\n");
 					}
 				}
+				routeTable[rTableCount].nextHop = newNextHop;
 
 				rTableCount++;
 			}

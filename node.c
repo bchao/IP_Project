@@ -193,7 +193,7 @@ void *parse_input() {
 				}
 			}
 
-			ip testIP = createIPHeader(myIP, VIPaddress, 2, message);
+			ip testIP = createIPHeader(myIP, VIPaddress, 0, message);
 			// printf("%d %d %d", testIP.ip_src, testIP.ip_dst, testIP.ip_p);
 
 			char serialized[MAX_MSG_LENGTH];
@@ -237,14 +237,14 @@ char * serialize(ip * ipStruct, char* buf) {
 	offset+=sizeof(uint32_t);
 	memcpy(buf + offset, &ipStruct->ip_dst, sizeof(uint32_t));
 	offset+=sizeof(uint32_t);
-	memcpy(buf + offset, &ipStruct->payload, (1400 - HEADER_SIZE));
+	memcpy(buf + offset, ipStruct->payload, (1400 - HEADER_SIZE));
 	offset+=(1400-HEADER_SIZE);
 
 	buf[MAX_MSG_LENGTH - 1] = '\0';
-	// int i;
-	// for (i = 0; i < 40; i++) {
-	// 	printf("Character at %i: %c\n", i, buf[i]);
-	// }
+	int i;
+	for (i = 0; i < 40; i++) {
+		printf("Character at %i: %c\n", i, buf[i]);
+	}
 
 	return buf;
 }
@@ -268,8 +268,8 @@ ip deserialize(char * buf) {
 	offset+=sizeof(uint32_t);
 	memcpy(&ipStruct_d.ip_dst, buf + offset, sizeof(uint32_t));
 	offset+=sizeof(uint32_t);
-	memcpy(&ipStruct_d.payload, buf + offset, 1400 - HEADER_SIZE);
-	offset+=(1400 - HEADER_SIZE);
+	// memcpy(&ipStruct_d.payload, buf + offset, 1400 - HEADER_SIZE);
+	// offset+=(1400 - HEADER_SIZE);
 
 	return ipStruct_d;
 }

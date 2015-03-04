@@ -10,18 +10,18 @@
 
 #define MAX_MSG_LENGTH (1400)
 #define BUF_LENGTH (64*1024) // 64 KiB
+#define HEADER_SIZE (16)
 
 typedef struct {
 	u_char		ip_p;				/* protocol */
 	u_char		ip_ttl;				/* time to live */
-	u_char		ip_hl:4;				/* header length */
-			// ip_v:4;				/* version */
 	short		ip_len;				/* total length */
-	u_short		ip_id;				/* identification */
 	short		ip_off;				/* fragment offset field */
-	u_short		ip_sum;				/* checksum */
+	short		ip_sum;				/* checksum */
 	uint32_t	ip_src;				/* source address */
 	uint32_t	ip_dst;				/* dest address */
+	// char payload[1400 - HEADER_SIZE];
+	void * 		payload;
 } ip;
 
 typedef struct {
@@ -39,7 +39,8 @@ typedef struct {
 	int cost;
 } routeTableEntry;
 
-void * serialize(ip * ipToSerialize, char * buf);
+char * serialize(ip * ipStruct, char* buf);
+ip deserialize(char * buf);
 ip createIPHeader(char * sAddress, char * dAddress, int p, char * msg);
 void* server();
 int client(const char * addr, uint16_t port, char *msg);
@@ -192,18 +193,22 @@ void *parse_input() {
 				}
 			}
 
-			ip testIP = createIPHeader(myIP, VIPaddress, 0, message);
+			ip testIP = createIPHeader(myIP, VIPaddress, 2, message);
 			// printf("%d %d %d", testIP.ip_src, testIP.ip_dst, testIP.ip_p);
 
-			char * serialized = (char*) malloc(sizeof(ip));
-
+			char serialized[MAX_MSG_LENGTH];
+			char tempS[MAX_MSG_LENGTH];
+			
 			serialize(&testIP, serialized);
-			// printf("buf: %s\n", serialized);
+			printf("outside serialize\n");
+			ip deserialized = deserialize(serialized);
 
-			// char hard_address[512];
-			// strcpy(hard_address, "127.0.0.1");
-			// int hard_port = 17001;
-			client(physAddress, rem_port, message);
+			printf("protocol %d\n", deserialized.ip_p);
+			printf("ttl %d\n", deserialized.ip_ttl);
+			printf("source %d\n", deserialized.ip_src);
+			printf("dest %d\n", deserialized.ip_dst);
+
+			client(physAddress, rem_port, serialized);
 			memset(message, 0, MAX_MSG_LENGTH);
 		}
 		else {
@@ -213,48 +218,79 @@ void *parse_input() {
 	return 0;
 }
 
-ip createIPHeader(char * sAddress, char * dAddress, int p, char * msg) {
-	ip header;
-	header.ip_p = p;
-	// header.ip_ttl = 16;
-	// header.ip_hl = sizeof(header);
-	header.ip_src = inet_addr(sAddress);
-	printf("sAddress %s -> %d\n", sAddress, header.ip_src);
-	header.ip_dst = inet_addr(dAddress);
-	printf("dAddress %s -> %d\n", dAddress, header.ip_dst);
-
-	return header;
-}
-
-void * serialize(ip * ipToSerialize, char * buf) {
+char * serialize(ip * ipStruct, char* buf) {
 	int offset;
+	//char * startbuf;
 	offset = 0;
-	char dString[16];
 
-	printf("ip_p: %d\n", ipToSerialize->ip_p);
+	memcpy(buf, &ipStruct->ip_p, sizeof(u_char));
+	offset+=sizeof(u_char);
+	memcpy(buf + offset, &ipStruct->ip_ttl, sizeof(u_char));
+	offset+=sizeof(u_char);
+	memcpy(buf + offset, &ipStruct->ip_len, sizeof(short));
+	offset+=sizeof(short);
+	memcpy(buf + offset, &ipStruct->ip_off, sizeof(short));
+	offset+=sizeof(short);
+	memcpy(buf + offset, &ipStruct->ip_sum, sizeof(short));
+	offset+=sizeof(short);
+	memcpy(buf + offset, &ipStruct->ip_src, sizeof(uint32_t));
+	offset+=sizeof(uint32_t);
+	memcpy(buf + offset, &ipStruct->ip_dst, sizeof(uint32_t));
+	offset+=sizeof(uint32_t);
+	memcpy(buf + offset, &ipStruct->payload, (1400 - HEADER_SIZE));
+	offset+=(1400-HEADER_SIZE);
 
-	// sprintf(dString, "%hd", *(int*)&ipToSerialize->ip_p);
-	// printf("%s\n", dString);
-	// memcpy(buf+offset, &(ipToSerialize->ip_p), offset+=sizeof(u_char));
-	// memcpy(buf+offset, dString, offset+=sizeof(int));
+	buf[MAX_MSG_LENGTH - 1] = '\0';
+	// int i;
+	// for (i = 0; i < 40; i++) {
+	// 	printf("Character at %i: %c\n", i, buf[i]);
+	// }
 
-
-	memcpy(buf+offset, &(ipToSerialize->ip_src), offset+=sizeof(uint32_t));
-	memcpy(buf+offset, ":", offset+=sizeof(u_char));
-
-	// memcpy(buf+offset, &ipToSerialize->ip_p, offset+=sizeof(u_char));
-	// memcpy(buf+offset, ":", offset+=sizeof(u_char));
-
-	printf("buf: %s\n", buf);
-
-	// printf("BLAH: %d\n", *(&ipToSerialize->ip_src));
-	// printf("BLAH: %d\n", *(&ipToSerialize->ip_dst));
-
-	return NULL;
+	return buf;
 }
 
 ip deserialize(char * buf) {
+	ip ipStruct_d;
+	//char * startbuf;
+	int offset = 0;
 
+	memcpy(&ipStruct_d.ip_p, buf, sizeof(u_char));
+	offset+=sizeof(u_char);
+	memcpy(&ipStruct_d.ip_ttl, buf + offset, sizeof(u_char));
+	offset+=sizeof(u_char);
+	memcpy(&ipStruct_d.ip_len, buf + offset, sizeof(short));
+	offset+=sizeof(short);
+	memcpy(&ipStruct_d.ip_off, buf + offset, sizeof(short));
+	offset+=sizeof(short);
+	memcpy(&ipStruct_d.ip_sum, buf + offset, sizeof(short));
+	offset+=sizeof(short);
+	memcpy(&ipStruct_d.ip_src, buf + offset, sizeof(uint32_t));
+	offset+=sizeof(uint32_t);
+	memcpy(&ipStruct_d.ip_dst, buf + offset, sizeof(uint32_t));
+	offset+=sizeof(uint32_t);
+	memcpy(&ipStruct_d.payload, buf + offset, 1400 - HEADER_SIZE);
+	offset+=(1400 - HEADER_SIZE);
+
+	return ipStruct_d;
+}
+
+ip createIPHeader(char * sAddress, char * dAddress, int p, char * msg) {
+	ip header;
+	header.ip_p = (int) p;
+	header.ip_ttl = 16;
+	header.ip_len = sizeof(msg);
+	header.ip_off = 0;
+	header.ip_sum = 0;
+	// header.ip_hl = sizeof(header);
+	header.ip_src = inet_addr(sAddress);
+	header.ip_dst = inet_addr(dAddress);
+	printf("testing\n");
+	// memcpy(&(header.payload), (void *)msg, 1400 - HEADER_SIZE);
+	header.payload = msg;
+	printf("header.payload %s\n", (char *)header.payload);
+	// strcpy(header.payload, msg);
+
+	return header;
 }
 
 int client(const char * addr, uint16_t port, char msg[])
@@ -267,12 +303,13 @@ int client(const char * addr, uint16_t port, char msg[])
 		return 1;
 	}
 
+	//printf("serialized thing in socket %i\n", (int) strlen(msg));
 	printf("Socket created on client\n");
 	server_addr.sin_addr.s_addr = inet_addr(addr);
 	server_addr.sin_family = AF_INET;
 	server_addr.sin_port = htons(port);
 
-	if (sendto(sock, msg, strlen(msg), 0, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+	if (sendto(sock, msg, MAX_MSG_LENGTH, 0, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
 		perror("Sending error:");
 		return 1;
 	}
@@ -311,13 +348,19 @@ void *server()
 			perror("Receiving error:");
 			return (void*) 1;
 		}
-
+		//printf("serialized thing on recv serv %i\n", (int) strlen(msg));
 		// temporarily assume always going to forward protocol 0
 		// not worry about TTL and checksum
 		// check if it's at destination
 		// if at destination, print. If not, forward
 
-		printf("%s\n", msg);
+		ip deserialized = deserialize(msg);
+
+		printf("protocol %d\n", deserialized.ip_p);
+		printf("ttl %d\n", deserialized.ip_ttl);
+		printf("source %d\n", deserialized.ip_src);
+		printf("dest %d\n", deserialized.ip_dst);
+		printf("msg %s\n", (char *)deserialized.payload);
 		memset(msg, 0, MAX_MSG_LENGTH);
 	}
 	close(sock);

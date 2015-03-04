@@ -221,8 +221,10 @@ void *send_updates() {
 	int i;
 	while(1) {
 		for (i = 0; i < interfaceCount; i++) {
-			// DO WE NEED TO CHECK IF INTERFACE IS DOWN???
-			//if (strcmp(interfaceArr[i].status, 'down') == 0 ) { continue; }
+			// Check if interface is down, if so don't update
+			if (strcmp(interfaceArr[i].status, 'down') == 0 ) { 
+				continue; 
+			}
 
 			// BUILD RIP PACKET
 			RIP message;
@@ -554,10 +556,19 @@ void *server()
 
 		if(deserialized.ip_p == 0) {
 			//check if it's at destination
-			//check ttl and checksum
-			//forward if you have to or print or do nothing
-			printf("msg %s\n", deserialized.payload);
+			int i;
+			for (i = 0; i < interfaceCount; i++) {
+				// we are at destination, print the message
+				if(deserialized.ip_dest == inet_addr(interfaceArr[i].myVIP)) {
+					printf("msg %s\n", deserialized.payload);
+					break;
+				} else if() {
 
+				}
+			}
+
+
+		
 		} else if(deserialized.ip_p == 200) {
 			printf("protocol 200\n");
 			updateRoutingTable(deserialized.payload, deserialized.ip_dst);

@@ -21,7 +21,7 @@ typedef struct {
 	short		ip_off;				/* fragment offset field */
 	int			ip_sum;				/* checksum */
 	uint32_t	ip_src;				/* source address */
-	uint32_t	ip_dst;				/* dest address */
+	uint32_t	ip_dst;				/* destination address */
 	char payload[1400 - HEADER_SIZE];
 } ip;
 
@@ -222,7 +222,7 @@ void *send_updates() {
 	while(1) {
 		for (i = 0; i < interfaceCount; i++) {
 			// Check if interface is down, if so don't update
-			if (strcmp(interfaceArr[i].status, 'down') == 0 ) { 
+			if (strcmp(interfaceArr[i].status, "down") == 0 ) { 
 				continue; 
 			}
 
@@ -551,19 +551,38 @@ void *server()
 			deserialized.ip_ttl--;
 		}
 
-		// Recalculate checksum
-		deserialized.ip_sum = ip_sum((char*) &deserialized, MAX_MSG_LENGTH);
+		
 
 		if(deserialized.ip_p == 0) {
 			//check if it's at destination
 			int i;
 			for (i = 0; i < interfaceCount; i++) {
 				// we are at destination, print the message
-				if(deserialized.ip_dest == inet_addr(interfaceArr[i].myVIP)) {
+				if(deserialized.ip_dst == inet_addr(interfaceArr[i].myVIP)) {
 					printf("msg %s\n", deserialized.payload);
 					break;
-				} else if() {
+				} else { // Check where to forward it to
+					int j, rem_port;
+					char *physAddress;
+					for (j = 0; j < rTableCount; j++) {
+						if (deserialized.ip_dst == inet_addr(routeTable[j].dAddress)) {
 
+							// DO I NEED TO UPDATE deserialized.ip_src to myIP here??? NO?
+
+							// Find physical address and rem_port
+							int nextHop = routeTable[j].nextHop - 1;
+							rem_port = interfaceArr[nextHop].remotePort;
+							physAddress = interfaceArr[nextHop].remoteIP;
+
+							// Recalculate checksum before forwarding
+							deserialized.ip_sum = ip_sum((char*) &deserialized, MAX_MSG_LENGTH);
+
+							char serialized[MAX_MSG_LENGTH];	
+							serialize(&deserialized, serialized);
+							// Forward to next place
+							client(physAddress, rem_port, serialized);
+						}
+					}
 				}
 			}
 

@@ -21,9 +21,17 @@ typedef struct {
 	short		ip_sum;				/* checksum */
 	uint32_t	ip_src;				/* source address */
 	uint32_t	ip_dst;				/* dest address */
-	// char payload[1400 - HEADER_SIZE];
-	void * 		payload;
+	char payload[1400 - HEADER_SIZE];
 } ip;
+
+typedef struct {
+	uint16_t command;
+	uint16_t num_entries;
+	struct {
+		uint32_t cost;
+		uint32_t address;
+	} entries[64];
+} RIP;
 
 typedef struct {
 	char remoteIP[20];
@@ -41,9 +49,11 @@ typedef struct {
 	time_t last_updated;
 } routeTableEntry;
 
-char * serialize(ip * ipStruct, char* buf);
+char *serialize(ip * ipStruct, char* buf);
 ip deserialize(char * buf);
 ip createIPPacket(char * sAddress, char * dAddress, int p, char * msg);
+ip createRIPPacket(char * sAddress, char * dAddress, int p, RIP * rip);
+void *updateRoutingTable(char * payload);
 void *server();
 void *send_updates();
 void *evict_entries();
@@ -138,19 +148,19 @@ int main(int argc, char ** argv)
 		return 1;
 	}
 
-	/* NEW THREAD TO LOOP AND SEND OUT UPDATE RIP PACKETS */
-	pthread_t update_thread;
-	if(pthread_create(&update_thread, NULL, send_updates, NULL)) {
-		fprintf(stderr, "Error creating update thread\n");
-		return 1;
-	}
+	// /* NEW THREAD TO LOOP AND SEND OUT UPDATE RIP PACKETS */
+	// pthread_t update_thread;
+	// if(pthread_create(&update_thread, NULL, send_updates, NULL)) {
+	// 	fprintf(stderr, "Error creating update thread\n");
+	// 	return 1;
+	// }
 
-	/* NEW THREAD TO LOOP AND EVICT */
-	pthread_t evict_thread;
-	if(pthread_create(&evict_thread, NULL, evict_entries, NULL)) {
-		fprintf(stderr, "Error creating update thread\n");
-		return 1;
-	}
+	// /* NEW THREAD TO LOOP AND EVICT */
+	// pthread_t evict_thread;
+	// if(pthread_create(&evict_thread, NULL, evict_entries, NULL)) {
+	// 	fprintf(stderr, "Error creating update thread\n");
+	// 	return 1;
+	// }
 
 	/* LOOP AND WAIT FOR USER INPUT */
 	
@@ -168,7 +178,7 @@ void *evict_entries() {
 	while(1) {
 		for(i = 0; i < rTableCount; i++) {
 			routeTableEntry entry = routeTable[i];
-			if(time() - entry.last_updated > EVICTION_TIME) {
+			if(time(0) - entry.last_updated > EVICTION_TIME) {
 				entry.cost = 16;
 			}
 		}
@@ -180,7 +190,7 @@ void *evict_entries() {
 */
 void *send_updates() {
 	int i;
-	while(1) {		
+	while(1) {
 		for (i = 0; i < interfaceCount; i++) {
 			// BUILD RIP PACKET
 			RIP *message;
@@ -196,14 +206,14 @@ void *send_updates() {
 				else {
 					(message->entries)[j].cost = routeTable[j].cost;
 				}	
-				(message->entries)[j].address = routeTable[j].dAddress;	
+				(message->entries)[j].address = inet_addr(routeTable[j].dAddress);	
 			}
 
-			ip update_packet = createIPPacket(myIP, VIPaddress, 200, (char*) message);
+			ip update_packet = createRIPPacket(myIP, interfaceArr[i].remoteVIP, 200, message);
 			char serialized[MAX_MSG_LENGTH];			
 			serialize(&update_packet, serialized);
 
-			client(interfaceArr[i].remoteIP, interfaceArr[i].remotePort, update_packet);				
+			client(interfaceArr[i].remoteIP, interfaceArr[i].remotePort, serialized);				
 		}
 		sleep(5);
 	}
@@ -260,21 +270,29 @@ void *parse_input() {
 			}
 
 			ip testIP = createIPPacket(myIP, VIPaddress, 0, message);
+
+			// RIP rip;
+			// rip.command = 10;
+			// rip.num_entries = 2;
+			// rip.entries[0].cost = 1;
+			// rip.entries[0].address = 100;
+			// rip.entries[1].cost = 2;
+			// rip.entries[1].address = 200;
+			// ip testIP = createRIPPacket(myIP, VIPaddress, 200, &rip);
 			// printf("%d %d %d", testIP.ip_src, testIP.ip_dst, testIP.ip_p);
 
 			char serialized[MAX_MSG_LENGTH];
-			//char tempS[MAX_MSG_LENGTH];
 			
 			serialize(&testIP, serialized);
 
-			printf("outside serialize\n");
-			ip deserialized = deserialize(serialized);
+			// ip deserialized = deserialize(serialized);
 
-			printf("protocol %d\n", deserialized.ip_p);
-			printf("ttl %d\n", deserialized.ip_ttl);
-			printf("source %d\n", deserialized.ip_src);
-			printf("dest %d\n", deserialized.ip_dst);
+			// printf("protocol %d\n", deserialized.ip_p);
+			// printf("ttl %d\n", deserialized.ip_ttl);
+			// printf("source %d\n", deserialized.ip_src);
+			// printf("dest %d\n", deserialized.ip_dst);
 
+			// printf("serialized thing before socket %i\n", (int) strlen(serialized));
 			client(physAddress, rem_port, serialized);
 			memset(message, 0, MAX_MSG_LENGTH);
 		}
@@ -304,41 +322,48 @@ char * serialize(ip * ipStruct, char* buf) {
 	offset+=sizeof(uint32_t);
 	memcpy(buf + offset, &ipStruct->ip_dst, sizeof(uint32_t));
 	offset+=sizeof(uint32_t);
-	memcpy(buf + offset, ipStruct->payload, (1400 - HEADER_SIZE));
+
+	printf("protocol = %d\n", ipStruct->ip_p);
+
+	memcpy(buf + offset, &ipStruct->payload, (1400 - HEADER_SIZE));
 	offset+=(1400-HEADER_SIZE);
 
-	buf[MAX_MSG_LENGTH - 1] = '\0';
-	int i;
-	for (i = 0; i < 40; i++) {
-		printf("Character at %i: %c\n", i, buf[i]);
-	}
+	buf[MAX_MSG_LENGTH] = '\0';
+	// int i;
+	// for (i = 0; i < 40; i++) {
+	// 	printf("Character at %i: %c\n", i, buf[i]);
+	// }
+	// printf("length: %d\n", (int) strlen(buf));
 
 	return buf;
 }
 
 ip deserialize(char * buf) {
-	ip ipStruct_d;
+	ip ipStruct;
 	//char * startbuf;
 	int offset = 0;
 
-	memcpy(&ipStruct_d.ip_p, buf, sizeof(u_char));
+	memcpy(&ipStruct.ip_p, buf, sizeof(u_char));
 	offset+=sizeof(u_char);
-	memcpy(&ipStruct_d.ip_ttl, buf + offset, sizeof(u_char));
+	memcpy(&ipStruct.ip_ttl, buf + offset, sizeof(u_char));
 	offset+=sizeof(u_char);
-	memcpy(&ipStruct_d.ip_len, buf + offset, sizeof(short));
+	memcpy(&ipStruct.ip_len, buf + offset, sizeof(short));
 	offset+=sizeof(short);
-	memcpy(&ipStruct_d.ip_off, buf + offset, sizeof(short));
+	memcpy(&ipStruct.ip_off, buf + offset, sizeof(short));
 	offset+=sizeof(short);
-	memcpy(&ipStruct_d.ip_sum, buf + offset, sizeof(short));
+	memcpy(&ipStruct.ip_sum, buf + offset, sizeof(short));
 	offset+=sizeof(short);
-	memcpy(&ipStruct_d.ip_src, buf + offset, sizeof(uint32_t));
+	memcpy(&ipStruct.ip_src, buf + offset, sizeof(uint32_t));
 	offset+=sizeof(uint32_t);
-	memcpy(&ipStruct_d.ip_dst, buf + offset, sizeof(uint32_t));
+	memcpy(&ipStruct.ip_dst, buf + offset, sizeof(uint32_t));
 	offset+=sizeof(uint32_t);
-	// memcpy(&ipStruct_d.payload, buf + offset, 1400 - HEADER_SIZE);
-	// offset+=(1400 - HEADER_SIZE);
 
-	return ipStruct_d;
+	// printf("protocol: %d\n", ipStruct.ip_p);
+
+	memcpy(&ipStruct.payload, buf + offset, 1400 - HEADER_SIZE);
+	offset+=(1400 - HEADER_SIZE);
+
+	return ipStruct;
 }
 
 ip createIPPacket(char * sAddress, char * dAddress, int p, char * msg) {
@@ -348,14 +373,38 @@ ip createIPPacket(char * sAddress, char * dAddress, int p, char * msg) {
 	header.ip_len = sizeof(msg);
 	header.ip_off = 0;
 	header.ip_sum = 0;
-	// header.ip_hl = sizeof(header);
 	header.ip_src = inet_addr(sAddress);
 	header.ip_dst = inet_addr(dAddress);
-	printf("testing\n");
-	// memcpy(&(header.payload), (void *)msg, 1400 - HEADER_SIZE);
-	header.payload = msg;
-	printf("header.payload %s\n", (char *)header.payload);
-	// strcpy(header.payload, msg);
+	strcpy(header.payload, msg);
+
+	return header;
+}
+
+ip createRIPPacket(char * sAddress, char * dAddress, int p, RIP * rip) {
+	ip header;
+	int n_entries, i;
+
+	header.ip_p = (int) p;
+	header.ip_ttl = 16;
+	header.ip_len = sizeof(rip);
+	header.ip_off = 0;
+	header.ip_sum = 0;
+	header.ip_src = inet_addr(sAddress);
+	header.ip_dst = inet_addr(dAddress);
+
+	int offset = 0;
+	memcpy(header.payload + offset, &rip->command, sizeof(uint16_t));
+	offset+=sizeof(uint16_t);
+	memcpy(header.payload + offset, &rip->num_entries, sizeof(uint16_t));
+	offset+=sizeof(uint16_t);
+	n_entries = (int) rip->num_entries;
+
+	for(i = 0; i < n_entries; i++) {
+		memcpy(header.payload + offset, &rip->entries[i].cost, sizeof(uint32_t));
+		offset+=sizeof(uint32_t);
+		memcpy(header.payload + offset, &rip->entries[i].address, sizeof(uint32_t));
+		offset+=sizeof(uint32_t);
+	}
 
 	return header;
 }
@@ -427,9 +476,49 @@ void *server()
 		printf("ttl %d\n", deserialized.ip_ttl);
 		printf("source %d\n", deserialized.ip_src);
 		printf("dest %d\n", deserialized.ip_dst);
-		printf("msg %s\n", (char *)deserialized.payload);
+
+		if(deserialized.ip_p == 0) {
+			//check if it's at destination
+			//check ttl and checksum
+			//forward if you have to or print or do nothing
+			printf("msg %s\n", deserialized.payload);
+
+		} else if(deserialized.ip_p == 200) {
+			printf("protocol 200\n");
+			updateRoutingTable(deserialized.payload);
+		}
+
 		memset(msg, 0, MAX_MSG_LENGTH);
 	}
 	close(sock);
 	return (void*) 0;
+}
+
+void * updateRoutingTable(char * payload) {
+	int offset = 0;
+	int n_entries, i;
+
+	RIP rip;
+
+	memcpy(&rip.command, payload + offset, sizeof(uint16_t));
+	offset+=sizeof(uint16_t);
+	memcpy(&rip.num_entries, payload + offset, sizeof(uint16_t));
+	offset+=sizeof(uint16_t);
+	n_entries = (int) rip.num_entries;
+
+	for(i = 0; i < n_entries; i++) {
+		memcpy(&rip.entries[i].cost, payload + offset, sizeof(uint32_t));
+		offset+=sizeof(uint32_t);
+		memcpy(&rip.entries[i].address, payload + offset, sizeof(uint32_t));
+		offset+=sizeof(uint32_t);
+	}
+
+	printf("command: %d\n", rip.command);
+	printf("num_entries: %d\n", rip.num_entries);
+	printf("entry 1 cost: %d\n", rip.entries[0].cost);
+	printf("entry 2 cost: %d\n", rip.entries[1].cost);
+
+	//now rip is populated
+
+	return NULL;
 }

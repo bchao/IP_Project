@@ -7,10 +7,11 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include <netinet/in.h>
+#include <inttypes.h>
 
 #define MAX_MSG_LENGTH (1400) // max length of a packet to be sent
 #define BUF_LENGTH (64*1024) // 64 KiB
-#define HEADER_SIZE (16) // total size of our IP header
+#define HEADER_SIZE (18) // total size of our IP header
 #define EVICTION_TIME (12) // 12 seconds to evict
 
 typedef struct {
@@ -18,7 +19,7 @@ typedef struct {
 	u_char		ip_ttl;				/* time to live */
 	short		ip_len;				/* total length */
 	short		ip_off;				/* fragment offset field */
-	short		ip_sum;				/* checksum */
+	int			ip_sum;				/* checksum */
 	uint32_t	ip_src;				/* source address */
 	uint32_t	ip_dst;				/* dest address */
 	char payload[1400 - HEADER_SIZE];
@@ -60,6 +61,7 @@ void *send_updates();
 void *evict_entries();
 int client(const char * addr, uint16_t port, char *msg);
 void *parse_input();
+int ip_sum(char* packet, int len);
 
 int interfaceCount;
 int rTableCount;
@@ -185,9 +187,6 @@ int main(int argc, char ** argv)
 void *send_initial_requests() {
 	int i;
 	for (i = 0; i < interfaceCount; i++) {
-		// check if interface is down
-		//if (interfaceArr[i])
-
 		// BUILD RIP PACKET
 		RIP message;
 		message.command = 1; // SHOULD THIS BE A REQUEST OR RESPONSE (1 or 2)?!?
@@ -222,11 +221,12 @@ void *send_updates() {
 	int i;
 	while(1) {
 		for (i = 0; i < interfaceCount; i++) {
-			// check if interface is down
-			//if (interfaceArr[i])
+			// DO WE NEED TO CHECK IF INTERFACE IS DOWN???
+			//if (strcmp(interfaceArr[i].status, 'down') == 0 ) { continue; }
+
 			// BUILD RIP PACKET
 			RIP message;
-			message.command = 2; // SHOULD THIS BE A REQUEST OR RESPONSE (1 or 2)?!?
+			message.command = 2;
 			message.num_entries = rTableCount;
 
 			int j;
@@ -349,7 +349,7 @@ void *parse_input() {
 			memset(message, 0, MAX_MSG_LENGTH);
 		}
 		else {
-			printf("not a correct input\n");
+			printf("Incorrect input\n");
 		}
 	}
 	return 0;
@@ -368,8 +368,8 @@ char * serialize(ip * ipStruct, char* buf) {
 	offset+=sizeof(short);
 	memcpy(buf + offset, &ipStruct->ip_off, sizeof(short));
 	offset+=sizeof(short);
-	memcpy(buf + offset, &ipStruct->ip_sum, sizeof(short));
-	offset+=sizeof(short);
+	memcpy(buf + offset, &ipStruct->ip_sum, sizeof(int));
+	offset+=sizeof(int);
 	memcpy(buf + offset, &ipStruct->ip_src, sizeof(uint32_t));
 	offset+=sizeof(uint32_t);
 	memcpy(buf + offset, &ipStruct->ip_dst, sizeof(uint32_t));
@@ -403,8 +403,8 @@ ip deserialize(char * buf) {
 	offset+=sizeof(short);
 	memcpy(&ipStruct.ip_off, buf + offset, sizeof(short));
 	offset+=sizeof(short);
-	memcpy(&ipStruct.ip_sum, buf + offset, sizeof(short));
-	offset+=sizeof(short);
+	memcpy(&ipStruct.ip_sum, buf + offset, sizeof(int));
+	offset+=sizeof(int);
 	memcpy(&ipStruct.ip_src, buf + offset, sizeof(uint32_t));
 	offset+=sizeof(uint32_t);
 	memcpy(&ipStruct.ip_dst, buf + offset, sizeof(uint32_t));
@@ -419,46 +419,51 @@ ip deserialize(char * buf) {
 }
 
 ip createIPPacket(char * sAddress, char * dAddress, int p, char * msg) {
-	ip header;
-	header.ip_p = (int) p;
-	header.ip_ttl = 16;
-	header.ip_len = sizeof(msg);
-	header.ip_off = 0;
-	header.ip_sum = 0;
-	header.ip_src = inet_addr(sAddress);
-	header.ip_dst = inet_addr(dAddress);
-	strcpy(header.payload, msg);
+	ip packet;
+	packet.ip_p = (int) p;
+	packet.ip_ttl = 16;
+	packet.ip_len = sizeof(msg);
+	packet.ip_off = 0;
+	packet.ip_src = inet_addr(sAddress);
+	packet.ip_dst = inet_addr(dAddress);
+	strcpy(packet.payload, msg);
 
-	return header;
+	// Calculate checksum
+	int checksum = ip_sum((char*) &packet, MAX_MSG_LENGTH);
+	packet.ip_sum = checksum;
+
+	return packet;
 }
 
 ip createRIPPacket(char * sAddress, char * dAddress, int p, RIP * rip) {
-	ip header;
+	ip packet;
 	int n_entries, i;
 
-	header.ip_p = (int) p;
-	header.ip_ttl = 16;
-	header.ip_len = sizeof(rip);
-	header.ip_off = 0;
-	header.ip_sum = 0;
-	header.ip_src = inet_addr(sAddress);
-	header.ip_dst = inet_addr(dAddress);
+	packet.ip_p = (int) p;
+	packet.ip_ttl = 16;
+	packet.ip_len = sizeof(rip);
+	packet.ip_off = 0;
+	packet.ip_src = inet_addr(sAddress);
+	packet.ip_dst = inet_addr(dAddress);
 
 	int offset = 0;
-	memcpy(header.payload + offset, &rip->command, sizeof(uint16_t));
+	memcpy(packet.payload + offset, &rip->command, sizeof(uint16_t));
 	offset+=sizeof(uint16_t);
-	memcpy(header.payload + offset, &rip->num_entries, sizeof(uint16_t));
+	memcpy(packet.payload + offset, &rip->num_entries, sizeof(uint16_t));
 	offset+=sizeof(uint16_t);
 	n_entries = (int) rip->num_entries;
 
 	for(i = 0; i < n_entries; i++) {
-		memcpy(header.payload + offset, &rip->entries[i].cost, sizeof(uint32_t));
+		memcpy(packet.payload + offset, &rip->entries[i].cost, sizeof(uint32_t));
 		offset+=sizeof(uint32_t);
-		memcpy(header.payload + offset, &rip->entries[i].address, sizeof(uint32_t));
+		memcpy(packet.payload + offset, &rip->entries[i].address, sizeof(uint32_t));
 		offset+=sizeof(uint32_t);
 	}
+	// Calculate checksum
+	int checksum = ip_sum((char*) &packet, MAX_MSG_LENGTH);
+	packet.ip_sum = checksum;
 
-	return header;
+	return packet;
 }
 
 int client(const char * addr, uint16_t port, char msg[])
@@ -516,7 +521,7 @@ void *server()
 			perror("Receiving error:");
 			return (void*) 1;
 		}
-		// printf("serialized thing on recv serv %i\n", (int) strlen(msg));
+		// 	printf("serialized thing on recv serv %i\n", (int) strlen(msg));
 		// temporarily assume always going to forward protocol 0
 		// not worry about TTL and checksum
 		// check if it's at destination
@@ -529,12 +534,23 @@ void *server()
 		printf("source %d\n", deserialized.ip_src);
 		printf("dest %d\n", deserialized.ip_dst);
 
+
+		int checksum = deserialized.ip_sum;
+		deserialized.ip_sum = 0;
+		if (ip_sum((char*) &deserialized, MAX_MSG_LENGTH) != checksum) {
+			printf("Checksums different, message dropped. \n");
+			return;
+		}
+
 		if(deserialized.ip_ttl == 0) {
 			printf("Message dropped.\n");
 			return;
 		} else {
 			deserialized.ip_ttl--;
 		}
+
+		// Recalculate checksum
+		deserialized.ip_sum = ip_sum((char*) &deserialized, MAX_MSG_LENGTH);
 
 		if(deserialized.ip_p == 0) {
 			//check if it's at destination
@@ -636,4 +652,27 @@ void * updateRoutingTable(char * payload, uint32_t ip_dest) {
 	}
 
 	return NULL;
+}
+
+int ip_sum(char* packet, int n) {
+  uint16_t *p = (uint16_t*)packet;
+  uint16_t answer;
+  long sum = 0;
+  uint16_t odd_byte = 0;
+
+  while (n > 1) {
+    sum += *p++;
+    n -= 2;
+  }
+
+  /* mop up an odd byte, if necessary */
+  if (n == 1) {
+    *(uint8_t*)(&odd_byte) = *(uint8_t*)p;
+    sum += odd_byte;
+  }
+
+  sum = (sum >> 16) + (sum & 0xffff); /* add hi 16 to low 16 */
+  sum += (sum >> 16);           /* add carry */
+  answer = ~sum;                /* ones-complement, truncate*/
+  return answer;
 }

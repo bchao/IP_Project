@@ -8,9 +8,10 @@
 #include <pthread.h>
 #include <netinet/in.h>
 
-#define MAX_MSG_LENGTH (1400)
+#define MAX_MSG_LENGTH (1400) // max length of a packet to be sent
 #define BUF_LENGTH (64*1024) // 64 KiB
-#define HEADER_SIZE (16)
+#define HEADER_SIZE (16) // total size of our IP header
+#define EVICTION_TIME (12) // 12 seconds to evict
 
 typedef struct {
 	u_char		ip_p;				/* protocol */
@@ -37,17 +38,20 @@ typedef struct {
 	char dAddress[20];
 	int nextHop;
 	int cost;
+	time_t last_updated;
 } routeTableEntry;
 
 char * serialize(ip * ipStruct, char* buf);
 ip deserialize(char * buf);
-ip createIPHeader(char * sAddress, char * dAddress, int p, char * msg);
-void* server();
+ip createIPPacket(char * sAddress, char * dAddress, int p, char * msg);
+void *server();
+void *send_updates();
+void *evict_entries();
 int client(const char * addr, uint16_t port, char *msg);
 void *parse_input();
 
 int interfaceCount;
-int rtableCount;
+int rTableCount;
 int myPort;
 char myIP[20];
 interface interfaceArr[16];
@@ -118,7 +122,7 @@ int main(int argc, char ** argv)
 	fclose(fp);
 
 	// hardcoded routing table
-	rtableCount = 2;
+	rTableCount = 2;
 	strcpy(routeTable[0].dAddress, "10.116.89.157");
 	routeTable[0].nextHop = 1;
 	routeTable[0].cost = 1;
@@ -127,20 +131,82 @@ int main(int argc, char ** argv)
 	routeTable[1].cost = 1;
 
 
-	/* RUN AS UDP SERVER */
+	/* NEW THREAD TO RUN AS UDP SERVER */
 	pthread_t server_thread;
 	if(pthread_create(&server_thread, NULL, server, NULL)) {
-		fprintf(stderr, "Error creating thread\n");
+		fprintf(stderr, "Error creating server thread\n");
 		return 1;
 	}
 
-	/* CREATE ANOTHER THREAD TO LOOP AND WAIT FOR USER INPUT */
+	/* NEW THREAD TO LOOP AND SEND OUT UPDATE RIP PACKETS */
+	pthread_t update_thread;
+	if(pthread_create(&update_thread, NULL, send_updates, NULL)) {
+		fprintf(stderr, "Error creating update thread\n");
+		return 1;
+	}
+
+	/* NEW THREAD TO LOOP AND EVICT */
+	pthread_t evict_thread;
+	if(pthread_create(&evict_thread, NULL, evict_entries, NULL)) {
+		fprintf(stderr, "Error creating update thread\n");
+		return 1;
+	}
+
+	/* LOOP AND WAIT FOR USER INPUT */
 	
 	parse_input();
 
-	/* TRY TO MAKE CALLS TO LINK LAYER */
+	
 
 	return 0;
+}
+/* Loops infinitely over the routing entries
+   If any of the entries haven't been updated in the last 12 seconds, set its cost to infinity (16)
+*/
+void *evict_entries() {
+	int i;
+	while(1) {
+		for(i = 0; i < rTableCount; i++) {
+			routeTableEntry entry = routeTable[i];
+			if(time() - entry.last_updated > EVICTION_TIME) {
+				entry.cost = 16;
+			}
+		}
+	}
+}
+
+/* Loops infinitely and sends out updates to all interfaces after sleeping every 5 seconds
+   Build the RIP packet from routing table and send to each interface
+*/
+void *send_updates() {
+	int i;
+	while(1) {		
+		for (i = 0; i < interfaceCount; i++) {
+			// BUILD RIP PACKET
+			RIP *message;
+			message->command = 1; // SHOULD THIS BE A REQUEST OR RESPONSE (1 or 2)?!?
+			message->num_entries = rTableCount;
+
+			int j;
+			for(j = 0; j < rTableCount; j++) {
+				// SPECIAL POISON REVERSE CONDITION? SET THE COST TO infinity (16)
+				if(routeTable[j].nextHop == interfaceArr[i].interface_id) {
+					(message->entries)[j].cost = 16;
+				}
+				else {
+					(message->entries)[j].cost = routeTable[j].cost;
+				}	
+				(message->entries)[j].address = routeTable[j].dAddress;	
+			}
+
+			ip update_packet = createIPPacket(myIP, VIPaddress, 200, (char*) message);
+			char serialized[MAX_MSG_LENGTH];			
+			serialize(&update_packet, serialized);
+
+			client(interfaceArr[i].remoteIP, interfaceArr[i].remotePort, update_packet);				
+		}
+		sleep(5);
+	}
 }
 
 void *parse_input() {
@@ -184,7 +250,7 @@ void *parse_input() {
 			int i, rem_port;
 			char *physAddress;
 			
-			for (i = 0; i < rtableCount; i++) {
+			for (i = 0; i < rTableCount; i++) {
 				if(strcmp(VIPaddress, routeTable[i].dAddress) == 0) {
 					int nextHop = routeTable[i].nextHop - 1;
 					rem_port = interfaceArr[nextHop].remotePort;
@@ -193,13 +259,14 @@ void *parse_input() {
 				}
 			}
 
-			ip testIP = createIPHeader(myIP, VIPaddress, 0, message);
+			ip testIP = createIPPacket(myIP, VIPaddress, 0, message);
 			// printf("%d %d %d", testIP.ip_src, testIP.ip_dst, testIP.ip_p);
 
 			char serialized[MAX_MSG_LENGTH];
-			char tempS[MAX_MSG_LENGTH];
+			//char tempS[MAX_MSG_LENGTH];
 			
 			serialize(&testIP, serialized);
+
 			printf("outside serialize\n");
 			ip deserialized = deserialize(serialized);
 
@@ -274,7 +341,7 @@ ip deserialize(char * buf) {
 	return ipStruct_d;
 }
 
-ip createIPHeader(char * sAddress, char * dAddress, int p, char * msg) {
+ip createIPPacket(char * sAddress, char * dAddress, int p, char * msg) {
 	ip header;
 	header.ip_p = (int) p;
 	header.ip_ttl = 16;
